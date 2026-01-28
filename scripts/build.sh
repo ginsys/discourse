@@ -25,9 +25,11 @@ echo "Building image with discourse_docker launcher..."
 # Copy our container config into discourse_docker/containers/
 cp "$REPO_ROOT/containers/k8s-web.yml" "$REPO_ROOT/discourse_docker/containers/k8s-web.yml"
 
+# Substitute the DISCOURSE_VERSION template variable
+sed -i "s|{{ DISCOURSE_VERSION }}|$DISCOURSE_VERSION|g" "$REPO_ROOT/discourse_docker/containers/k8s-web.yml"
+
 cd discourse_docker
 
-export DISCOURSE_VERSION="$DISCOURSE_VERSION"
 ./launcher bootstrap k8s-web
 
 # Clean up the copied config
