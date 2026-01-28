@@ -28,7 +28,7 @@ cp "$REPO_ROOT/containers/k8s-web.yml" "$REPO_ROOT/discourse_docker/containers/k
 cd discourse_docker
 
 export DISCOURSE_VERSION="$DISCOURSE_VERSION"
-./launcher build k8s-web
+./launcher bootstrap k8s-web
 
 # Clean up the copied config
 rm -f containers/k8s-web.yml

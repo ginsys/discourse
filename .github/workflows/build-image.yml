@@ -53,7 +53,7 @@ jobs:
           export DISCOURSE_VERSION="${{ inputs.discourse_version }}"
 
           # Build using launcher (no DB required)
-          ./launcher build k8s-web
+          ./launcher bootstrap k8s-web
 
           # Clean up the copied config
           rm -f containers/k8s-web.yml
