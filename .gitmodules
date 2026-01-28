@@ -1,0 +1,3 @@
+[submodule "discourse_docker"]
+	path = discourse_docker
+	url = https://github.com/discourse/discourse_docker.git

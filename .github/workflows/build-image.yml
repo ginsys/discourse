@@ -1,0 +1,105 @@
+name: Build Discourse Image
+
+on:
+  workflow_call:
+    inputs:
+      discourse_version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      discourse_version:
+        description: 'Discourse version (e.g., v3.2.1)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Generate plugin hash
+        id: plugins
+        run: |
+          HASH=$(sha256sum plugins.yml | cut -c1-12)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Generate version manifest
+        run: |
+          ./scripts/generate-manifest.sh \
+            "${{ inputs.discourse_version }}" \
+            "${{ steps.plugins.outputs.hash }}" \
+            > /tmp/version-manifest.yaml
+
+      - name: Build image with launcher
+        run: |
+          cd discourse_docker
+
+          # Set version for templates
+          export DISCOURSE_VERSION="${{ inputs.discourse_version }}"
+
+          # Build using launcher (no DB required)
+          ./launcher build ../containers/k8s-web
+
+      - name: Copy manifest into image
+        run: |
+          # Create minimal Dockerfile to add manifest
+          cat > /tmp/Dockerfile.manifest << 'EOF'
+          ARG BASE_IMAGE
+          FROM ${BASE_IMAGE}
+          COPY version-manifest.yaml /version-manifest.yaml
+          EOF
+
+          docker build \
+            --build-arg BASE_IMAGE=local_discourse/k8s-web \
+            -f /tmp/Dockerfile.manifest \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.discourse_version }}-${{ steps.plugins.outputs.hash }} \
+            /tmp/
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        run: |
+          VERSION="${{ inputs.discourse_version }}"
+          HASH="${{ steps.plugins.outputs.hash }}"
+
+          # Push with full tag
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-${HASH}
+
+          # Also tag as latest for this major.minor
+          MINOR=$(echo $VERSION | sed 's/v\([0-9]*\.[0-9]*\).*/\1/')
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-${HASH} \
+                     ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${MINOR}-latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${MINOR}-latest
+
+      - name: Update versions.json
+        run: |
+          jq --arg v "${{ inputs.discourse_version }}" \
+             --arg h "${{ steps.plugins.outputs.hash }}" \
+             '.discourse = $v | .plugins_hash = $h | .built_at = (now | todate)' \
+             versions.json > versions.json.tmp
+          mv versions.json.tmp versions.json
+
+      - name: Commit version update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add versions.json
+          git commit -m "Built image for ${{ inputs.discourse_version }}"
+          git push

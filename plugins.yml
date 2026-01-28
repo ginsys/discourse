@@ -1,0 +1,9 @@
+plugins: []
+# Add plugins as needed, e.g.:
+#   - name: discourse-solved
+#     repo: https://github.com/discourse/discourse-solved
+#     ref: main  # Or specific commit SHA
+#
+#   - name: discourse-voting
+#     repo: https://github.com/discourse/discourse-voting
+#     ref: v1.2.3  # Or specific tag

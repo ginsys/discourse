@@ -1,0 +1,22 @@
+templates:
+  - "templates/web.template.yml"
+  - "templates/web.ratelimited.template.yml"
+  - "templates/offline-page.template.yml"
+  # - "../custom-templates/k8s-tweaks.template.yml"  # Optional
+
+env:
+  LANG: en_US.UTF-8
+  DISCOURSE_DB_HOST: "placeholder"     # Overridden at runtime
+  DISCOURSE_REDIS_HOST: "placeholder"  # Overridden at runtime
+  DISCOURSE_HOSTNAME: "placeholder"    # Overridden at runtime
+
+params:
+  version: "{{ DISCOURSE_VERSION }}"   # Passed from CI
+
+hooks:
+  after_code:
+    - exec:
+        cd: $home/plugins
+        cmd: []
+          # Plugins injected from plugins.yml by build script
+          # Note: docker_manager NOT needed for K8s deployments
