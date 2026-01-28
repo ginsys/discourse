@@ -44,13 +44,19 @@ jobs:
 
       - name: Build image with launcher
         run: |
+          # Copy our container config into discourse_docker/containers/
+          cp containers/k8s-web.yml discourse_docker/containers/k8s-web.yml
+
           cd discourse_docker
 
           # Set version for templates
           export DISCOURSE_VERSION="${{ inputs.discourse_version }}"
 
           # Build using launcher (no DB required)
-          ./launcher build ../containers/k8s-web
+          ./launcher build k8s-web
+
+          # Clean up the copied config
+          rm -f containers/k8s-web.yml
 
       - name: Copy manifest into image
         run: |

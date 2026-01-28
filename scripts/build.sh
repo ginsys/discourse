@@ -21,10 +21,17 @@ echo "Generating version manifest..."
 ./scripts/generate-manifest.sh "$DISCOURSE_VERSION" "$PLUGINS_HASH" > /tmp/version-manifest.yaml
 
 echo "Building image with discourse_docker launcher..."
+
+# Copy our container config into discourse_docker/containers/
+cp "$REPO_ROOT/containers/k8s-web.yml" "$REPO_ROOT/discourse_docker/containers/k8s-web.yml"
+
 cd discourse_docker
 
 export DISCOURSE_VERSION="$DISCOURSE_VERSION"
-./launcher build ../containers/k8s-web
+./launcher build k8s-web
+
+# Clean up the copied config
+rm -f containers/k8s-web.yml
 
 echo "Adding version manifest to image..."
 cd "$REPO_ROOT"
