@@ -17,7 +17,7 @@ jobs:
       - name: Check for new Discourse release
         id: check
         run: |
-          # Get latest stable tag from Discourse repo
+          # Get latest stable tag from Discourse repo (CalVer format: vYYYY.M.patch)
           LATEST=$(curl -s https://api.github.com/repos/discourse/discourse/tags \
             | jq -r '[.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].name')
 
