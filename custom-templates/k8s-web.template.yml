@@ -11,6 +11,15 @@
 # This ensures our hooks with raise_on_fail: false execute before the standard hooks and prevent hard failures.
 
 run:
+  # Clean up any existing symlinks from previous bootstrap attempts
+  # This prevents "File exists" errors when web.template.yml tries to create them
+  - exec:
+      cd: $home
+      hook: before_code
+      cmd:
+        - 'rm -f log/production.log log/production_errors.log log/unicorn.stdout.log log/unicorn.stderr.log log/sidekiq.log || true'
+        - 'rm -f public/uploads public/backups || true'
+        - 'rm -f tmp/backups tmp/restores || true'
   # Override db_migrate hook - allow it to fail gracefully if DB is unavailable
   # During K8s image build, DISCOURSE_DB_HOST="placeholder" so connection will fail
   # At container runtime, real DB credentials are injected and migrations run via MIGRATE_ON_BOOT=1
