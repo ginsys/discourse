@@ -2,13 +2,17 @@ templates:
   - "templates/web.template.yml"
   - "templates/web.ratelimited.template.yml"
   - "templates/offline-page.template.yml"
-  # - "../custom-templates/k8s-tweaks.template.yml"  # Optional
+  - "../custom-templates/k8s-web.template.yml"  # K8s overrides: Skip DB/Redis during build
 
 env:
   LANG: en_US.UTF-8
-  DISCOURSE_DB_HOST: "placeholder"     # Overridden at runtime
-  DISCOURSE_REDIS_HOST: "placeholder"  # Overridden at runtime
-  DISCOURSE_HOSTNAME: "placeholder"    # Overridden at runtime
+  # Database connection placeholders - these MUST be overridden at runtime with real values
+  # Using "placeholder" prevents db:migrate from running during image build
+  DISCOURSE_DB_HOST: "placeholder"     # Override with real PostgreSQL host at runtime
+  DISCOURSE_REDIS_HOST: "placeholder"  # Override with real Redis host at runtime
+  DISCOURSE_HOSTNAME: "placeholder"    # Override with real hostname at runtime
+  # K8s-specific: Run migrations when container starts (not during build)
+  MIGRATE_ON_BOOT: "1"                 # Runs db:migrate on container startup with real DB
 
 params:
   version: "{{ DISCOURSE_VERSION }}"   # Passed from CI

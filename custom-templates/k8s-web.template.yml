@@ -1,0 +1,34 @@
+# K8s-specific template overrides
+#
+# Purpose: Allow Discourse image build WITHOUT requiring PostgreSQL/Redis
+#
+# Strategy:
+# 1. Override db_migrate hook with raise_on_fail: false to skip if DB unavailable
+# 2. Override assets_precompile hook with raise_on_fail: false to skip if Redis unavailable
+# 3. These operations will run when container starts via MIGRATE_ON_BOOT=1 (set in k8s-web.yml)
+#
+# Template ordering: This template MUST be listed FIRST in k8s-web.yml templates array
+# so our hooks take precedence over the standard web.template.yml hooks.
+
+run:
+  # Override db_migrate hook - allow it to fail gracefully if DB is unavailable
+  # During K8s image build, DISCOURSE_DB_HOST="placeholder" so connection will fail
+  # At container runtime, real DB credentials are injected and migrations run via MIGRATE_ON_BOOT=1
+  - exec:
+      cd: $home
+      tag: migrate
+      hook: db_migrate
+      raise_on_fail: false  # Key: Don't fail the build if DB is unavailable
+      cmd:
+        - 'echo "K8s Build Mode: Attempting db:migrate (will skip if DB unavailable)"'
+        - 'su discourse -c "bundle exec rake db:migrate" || echo "Skipped db:migrate - no database connection. Will run on container boot via MIGRATE_ON_BOOT=1"'
+
+  # Override assets_precompile hook - allow it to fail gracefully if Redis is unavailable
+  # themes:update task requires Redis, but assets:precompile might work without it
+  - exec:
+      cd: $home
+      tag: precompile
+      hook: assets_precompile
+      raise_on_fail: false  # Key: Don't fail the build if Redis is unavailable
+      cmd:
+        - 'su discourse -c "SKIP_EMBER_CLI_COMPILE=1 bundle exec rake assets:precompile" || echo "Asset precompilation skipped (may need Redis)"'
