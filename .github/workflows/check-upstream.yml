@@ -22,7 +22,7 @@ jobs:
             | jq -r '[.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].name')
 
           # Get our last built version
-          CURRENT=$(jq -r '.discourse // "none"' versions.json 2>/dev/null || echo "none")
+          CURRENT=$(yq -r '.discourse // "none"' versions.yaml 2>/dev/null || echo "none")
 
           echo "Latest upstream: $LATEST"
           echo "Current built: $CURRENT"

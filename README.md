@@ -17,7 +17,7 @@ This repository:
 - **Git Submodule**: Uses `discourse_docker` as a submodule (no fork required)
 - **Container Definition**: `containers/k8s-web.yml` defines the image configuration
 - **Plugin Management**: `plugins.yml` lists plugins with pinned versions
-- **Version Tracking**: `versions.json` tracks the last built version
+- **Version Tracking**: `versions.yaml` tracks the last built version
 - **Automated Builds**: GitHub Actions workflows detect and build new releases
 
 ### Build vs Runtime Separation
@@ -50,7 +50,7 @@ discourse-k8s-image/
 │   └── generate-manifest.sh        # Create version manifest
 │
 ├── plugins.yml                     # Plugin list with pinned versions
-├── versions.json                   # Tracks last-built versions
+├── versions.yaml                   # Tracks last-built versions
 └── README.md
 ```
 
@@ -102,9 +102,9 @@ This creates an image tagged as `discourse-k8s:v3.2.1-<plugin-hash>`.
 
 The `check-upstream.yml` workflow runs daily at 6 AM UTC:
 1. Queries GitHub API for latest Discourse release
-2. Compares against last-built version in `versions.json`
+2. Compares against last-built version in `versions.yaml`
 3. Triggers build if new version detected
-4. Updates `versions.json` after successful build
+4. Updates `versions.yaml` after successful build
 
 ## GitHub Container Registry
 
