@@ -15,8 +15,8 @@ This repository:
 ### Key Components
 
 - **Git Submodule**: Uses `discourse_docker` as a submodule (no fork required)
-- **Container Definition**: `containers/k8s-web.yml` defines the image configuration
-- **Plugin Management**: `plugins.yml` lists plugins with pinned versions
+- **Base Configuration**: `config/basecontainer.yaml` defines the base image configuration
+- **Plugin Sets**: `config/plugins/*.yaml` define optional plugin configurations
 - **Version Tracking**: `versions.yaml` tracks the last built version
 - **Automated Builds**: GitHub Actions workflows detect and build new releases
 
@@ -42,14 +42,16 @@ discourse-k8s-image/
 │
 ├── discourse_docker/               # Git submodule (upstream)
 │
-├── containers/
-│   └── k8s-web.yml                 # Container definition for K8s
+├── config/
+│   ├── basecontainer.yaml          # Base container config (no plugins)
+│   └── plugins/
+│       ├── default.yaml            # Default: no plugins
+│       └── example.yaml            # Example plugin configuration
 │
 ├── scripts/
-│   ├── build.sh                    # Local build helper script
+│   ├── k8s-bootstrap                # Custom bootstrap script
 │   └── generate-manifest.sh        # Create version manifest
 │
-├── plugins.yml                     # Plugin list with pinned versions
 ├── versions.yaml                   # Tracks last-built versions
 └── README.md
 ```
@@ -58,35 +60,53 @@ discourse-k8s-image/
 
 | Tag Format | Example | Purpose |
 |------------|---------|---------|
-| `v3.2.1-abc123def456` | Full version + plugin hash | Immutable, specific build |
+| `v3.2.1-abc123def456` | Full version + config hash | Immutable, specific build |
 | `3.2-latest` | Major.minor + latest | Rolling tag for minor version |
 
 ## Usage
 
 ### Adding Plugins
 
-Edit `plugins.yml` to add plugins:
+Plugins are configured separately from the base container definition. This allows you to:
+- Build images with different plugin sets without modifying the base config
+- Keep the base configuration clean and versioned
+- Create custom plugin combinations for different deployments
+
+#### Create a Plugin Configuration
+
+Create a new file in `config/plugins/` (e.g., `config/plugins/acme.yaml`):
 
 ```yaml
+# Custom plugin configuration for ACME deployment
 plugins:
-  - name: discourse-solved
-    repo: https://github.com/discourse/discourse-solved
-    ref: main  # Or specific commit SHA
-
-  - name: discourse-voting
-    repo: https://github.com/discourse/discourse-voting
-    ref: v1.2.3  # Or specific tag
+  - git clone https://github.com/discourse/discourse-solved.git
+  - git clone --branch v1.2.3 https://github.com/discourse/discourse-voting.git
 ```
 
-**Important**: Pin plugins to specific refs (commit SHAs or tags) for reproducible builds.
+**Important**: Pin plugins to specific branches or tags for reproducible builds.
+
+#### Build with Plugins
+
+Trigger a build with your plugin configuration:
+
+```bash
+# Using GitHub Actions UI
+gh workflow run build-image.yml -f plugins=acme
+
+# Or specify version and plugins
+gh workflow run build-image.yml -f discourse_version=v3.2.1 -f plugins=acme
+```
+
+**Note**: Different plugin sets generate different config hashes, ensuring unique image tags for each combination.
 
 ### Manual Build Trigger
 
 1. Go to Actions tab in GitHub
 2. Select "Build Discourse Image" workflow
 3. Click "Run workflow"
-4. Enter the Discourse version (e.g., `v3.2.1`)
-5. Click "Run workflow"
+4. Enter the Discourse version (e.g., `v3.2.1`) or leave empty for latest
+5. Enter the plugin config name (e.g., `acme`) or leave as `default` for no plugins
+6. Click "Run workflow"
 
 ### Local Testing
 
@@ -103,8 +123,10 @@ This creates an image tagged as `discourse-k8s:v3.2.1-<plugin-hash>`.
 The `check-upstream.yml` workflow runs daily at 6 AM UTC:
 1. Queries GitHub API for latest Discourse release
 2. Compares against last-built version in `versions.yaml`
-3. Triggers build if new version detected
-4. Updates `versions.yaml` after successful build
+3. If new version detected, updates `versions.yaml` and triggers build workflow
+4. Build workflow creates image with default plugin set (no plugins)
+
+**Note**: Automated builds use the `default` plugin configuration (empty). Custom plugin builds must be triggered manually.
 
 ## GitHub Container Registry
 
@@ -264,11 +286,17 @@ git commit -m "Update discourse_docker submodule to <commit-sha>"
 
 ### Testing Changes
 
-1. Make changes to `containers/k8s-web.yml` or `plugins.yml`
-2. Run local build: `./scripts/build.sh v3.2.1`
-3. Test the image locally
-4. Commit and push changes
-5. Trigger manual workflow to test in CI
+#### Base Configuration Changes
+1. Make changes to `config/basecontainer.yaml`
+2. Test locally using `./scripts/k8s-bootstrap basecontainer`
+3. Commit and push changes
+4. Trigger manual workflow to test in CI
+
+#### Plugin Configuration Changes
+1. Create or modify plugin config in `config/plugins/`
+2. Trigger workflow with plugin name: `gh workflow run build-image.yml -f plugins=<name>`
+3. Test the resulting image
+4. Commit and push the plugin configuration
 
 ## References
 

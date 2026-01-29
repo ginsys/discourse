@@ -1,0 +1,7 @@
+# Example plugin configuration
+# Copy this file to create a custom build
+#
+# Usage: gh workflow run build-image.yml -f plugins=<name>
+plugins:
+  - git clone https://github.com/discourse/discourse-solved.git
+  - git clone --branch v1.2.3 https://github.com/discourse/discourse-voting.git

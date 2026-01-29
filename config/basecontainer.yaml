@@ -4,7 +4,7 @@
 # - Image built with --skip-tags migrate,precompile (no DB/Redis required)
 # - Database migrations and asset precompilation run at container startup
 #
-# Build process: ./scripts/k8s-bootstrap k8s-web (no DB/Redis required)
+# Build process: ./scripts/k8s-bootstrap basecontainer (no DB/Redis required)
 # Runtime: Container must be started with real DISCOURSE_DB_HOST and DISCOURSE_REDIS_HOST env vars
 
 templates:
@@ -36,5 +36,4 @@ hooks:
     - exec:
         cd: $home/plugins
         cmd: []
-          # Plugins injected from plugins.yml by build script
-          # Note: docker_manager NOT needed for K8s deployments
+        # Plugins injected from config/plugins/*.yaml at build time

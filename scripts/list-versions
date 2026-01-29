@@ -1,0 +1,20 @@
+#!/bin/bash
+# List available Discourse stable versions
+# Usage: ./scripts/list-versions [count]
+
+COUNT="${1:-10}"
+
+echo "Available stable Discourse versions:"
+echo "====================================="
+curl -s https://api.github.com/repos/discourse/discourse/tags \
+  | jq -r --arg count "$COUNT" '
+    [.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))]
+    | .[:($count | tonumber)]
+    | .[].name'
+
+echo ""
+echo "To build a specific version:"
+echo "  gh workflow run build-image.yml -f discourse_version=vYYYY.M.patch"
+echo ""
+echo "To build latest stable:"
+echo "  gh workflow run build-image.yml"

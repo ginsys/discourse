@@ -5,17 +5,17 @@
 # Uses pups' --skip-tags flag to skip database-dependent operations
 #
 # Usage: ./scripts/k8s-bootstrap <config> [skip-tags]
-#   config:    Container config name (default: k8s-web)
+#   config:    Container config name (default: basecontainer)
 #   skip-tags: Comma-separated tags to skip (default: from PUPS_SKIP_TAGS env)
 #
 # Example:
 #   export PUPS_SKIP_TAGS="migrate,precompile"
-#   ./scripts/k8s-bootstrap k8s-web
+#   ./scripts/k8s-bootstrap basecontainer
 
 set -e
 
 # Configuration
-CONFIG="${1:-k8s-web}"
+CONFIG="${1:-basecontainer}"
 SKIP_TAGS="${2:-${PUPS_SKIP_TAGS:-migrate,precompile}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -72,7 +72,7 @@ main() {
   echo "======================="
 
   # Config file
-  CONFIG_FILE="$DD_DIR/containers/${CONFIG}.yml"
+  CONFIG_FILE="$REPO_ROOT/config/${CONFIG}.yaml"
   if [[ ! -f "$CONFIG_FILE" ]]; then
     echo "Error: Config file not found: $CONFIG_FILE"
     exit 1
