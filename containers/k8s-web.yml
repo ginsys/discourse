@@ -9,10 +9,10 @@
 # Runtime: Container must be started with real DISCOURSE_DB_HOST and DISCOURSE_REDIS_HOST env vars
 
 templates:
+  - "../custom-templates/k8s-web.template.yml"  # K8s overrides: MUST be first to override hooks
   - "templates/web.template.yml"
   - "templates/web.ratelimited.template.yml"
   - "templates/offline-page.template.yml"
-  - "../custom-templates/k8s-web.template.yml"  # K8s overrides: Skip DB/Redis during build
 
 env:
   LANG: en_US.UTF-8

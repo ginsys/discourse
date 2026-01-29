@@ -7,8 +7,8 @@
 # 2. Override assets_precompile hook with raise_on_fail: false to skip if Redis unavailable
 # 3. These operations will run when container starts via MIGRATE_ON_BOOT=1 (set in k8s-web.yml)
 #
-# Template ordering: Listed AFTER web.template.yml in k8s-web.yml templates array.
-# Our hooks APPEND to the standard hooks and use raise_on_fail: false to allow graceful failures.
+# Template ordering: MUST be listed FIRST in k8s-web.yml templates array (before web.template.yml).
+# This ensures our hooks with raise_on_fail: false execute before the standard hooks and prevent hard failures.
 
 run:
   # Override db_migrate hook - allow it to fail gracefully if DB is unavailable
