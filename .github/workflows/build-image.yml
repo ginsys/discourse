@@ -52,6 +52,9 @@ jobs:
 
           cd discourse_docker
 
+          # Clean up any existing container from previous runs
+          ./launcher destroy k8s-web || true
+
           # Build using launcher (no DB required)
           ./launcher bootstrap k8s-web
 
