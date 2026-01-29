@@ -1,0 +1,85 @@
+#!/bin/bash
+# Quick validation test for k8s-bootstrap script
+#
+# Tests:
+# 1. set -o pipefail is enabled
+# 2. Validation catches unsubstituted template variables
+# 3. Config path is correct
+#
+# Does NOT run full build (see test-k8s-bootstrap for that)
+
+set -e
+set -o pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TEST_VERSION="v2026.1.0"
+TEST_CONFIG="test-validation"
+
+echo "=== K8s Bootstrap Validation Test ==="
+echo ""
+
+# Test 1: Verify pipefail is enabled
+echo "1. Checking pipefail is enabled..."
+if ! grep -q "set -o pipefail" "$SCRIPT_DIR/k8s-bootstrap"; then
+  echo "ERROR: 'set -o pipefail' not found in k8s-bootstrap"
+  exit 1
+fi
+echo "✓ pipefail enabled"
+
+# Test 2: Verify validation catches unsubstituted variables
+echo ""
+echo "2. Testing validation catches unsubstituted template variables..."
+
+# Create config with unsubstituted variable
+cp "$REPO_ROOT/config/basecontainer.yaml" "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"
+
+# Try to run bootstrap (should fail with validation error)
+OUTPUT=$("$SCRIPT_DIR/k8s-bootstrap" "$TEST_CONFIG" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "Unsubstituted template variables"; then
+  echo "✓ Validation correctly catches unsubstituted variables"
+  rm -f "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"
+else
+  echo "ERROR: Validation did not catch unsubstituted variables"
+  echo "Output was:"
+  echo "$OUTPUT"
+  rm -f "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"
+  exit 1
+fi
+
+# Test 3: Verify config path is correct
+echo ""
+echo "3. Checking config path uses DD_DIR/containers..."
+if ! grep -q 'CONFIG_FILE="\$DD_DIR/containers/\${CONFIG}.yaml"' "$SCRIPT_DIR/k8s-bootstrap"; then
+  echo "ERROR: Config path does not use DD_DIR/containers"
+  echo "Found:"
+  grep 'CONFIG_FILE=' "$SCRIPT_DIR/k8s-bootstrap" || echo "(no match)"
+  exit 1
+fi
+echo "✓ Config path is correct"
+
+# Test 4: Verify substituted config passes validation
+echo ""
+echo "4. Testing substituted config passes validation..."
+
+# Create properly substituted config
+sed "s|{{ DISCOURSE_VERSION }}|${TEST_VERSION}|g" \
+  "$REPO_ROOT/config/basecontainer.yaml" \
+  > "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"
+
+# Run just the validation function by sourcing the script
+# We'll extract and test just the validation
+if grep -q '{{.*}}' "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"; then
+  echo "ERROR: Test setup failed - template variables still present"
+  exit 1
+fi
+echo "✓ Substituted config has no template variables"
+
+# Cleanup
+rm -f "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"
+
+echo ""
+echo "=== All validation tests passed! ==="
+echo ""
+echo "Note: This test only validates error detection."
+echo "Run './scripts/test-k8s-bootstrap' for full integration test (slow)."

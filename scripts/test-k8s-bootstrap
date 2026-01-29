@@ -1,0 +1,97 @@
+#!/bin/bash
+# Integration test for k8s-bootstrap script
+#
+# Validates that:
+# 1. Template variables are properly substituted
+# 2. Build succeeds without errors
+# 3. Resulting image contains correct version
+
+set -e
+set -o pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TEST_VERSION="v2026.1.0"
+TEST_CONFIG="test-basecontainer"
+
+echo "=== K8s Bootstrap Integration Test ==="
+echo ""
+
+# Cleanup function
+cleanup() {
+  echo ""
+  echo "Cleaning up..."
+  rm -f "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"
+  docker rmi "local_discourse/${TEST_CONFIG}" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Prepare test config
+echo "1. Preparing test config..."
+cp "$REPO_ROOT/config/basecontainer.yaml" "/tmp/${TEST_CONFIG}.yaml"
+
+# Substitute test version
+sed -i "s|{{ DISCOURSE_VERSION }}|${TEST_VERSION}|g" "/tmp/${TEST_CONFIG}.yaml"
+
+# Verify substitution worked
+if grep -q '{{.*}}' "/tmp/${TEST_CONFIG}.yaml"; then
+  echo "ERROR: Template substitution failed in test setup"
+  exit 1
+fi
+
+# Copy to expected location
+cp "/tmp/${TEST_CONFIG}.yaml" "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"
+echo "✓ Test config prepared with version: $TEST_VERSION"
+
+# Run bootstrap
+echo ""
+echo "2. Running k8s-bootstrap..."
+export PUPS_SKIP_TAGS="migrate,precompile"
+"$SCRIPT_DIR/k8s-bootstrap" "$TEST_CONFIG"
+
+# Verify image was created
+echo ""
+echo "3. Verifying image..."
+if ! docker image inspect "local_discourse/${TEST_CONFIG}" >/dev/null 2>&1; then
+  echo "ERROR: Image was not created"
+  exit 1
+fi
+echo "✓ Image exists"
+
+# Verify version in image
+echo ""
+echo "4. Checking version in image..."
+INSTALLED_VERSION=$(docker run --rm "local_discourse/${TEST_CONFIG}" cat /var/www/discourse/package.json | grep '"version"' | cut -d'"' -f4 || true)
+
+if [[ -z "$INSTALLED_VERSION" ]]; then
+  echo "ERROR: Could not extract version from image"
+  exit 1
+fi
+
+# Remove 'v' prefix from TEST_VERSION for comparison
+EXPECTED_VERSION="${TEST_VERSION#v}"
+if [[ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]]; then
+  echo "ERROR: Version mismatch!"
+  echo "  Expected: $EXPECTED_VERSION"
+  echo "  Got: $INSTALLED_VERSION"
+  exit 1
+fi
+echo "✓ Version verified: $INSTALLED_VERSION"
+
+# Test: Verify unsubstituted variables are caught
+echo ""
+echo "5. Testing validation catches unsubstituted variables..."
+cp "$REPO_ROOT/config/basecontainer.yaml" "/tmp/bad-config.yaml"
+cp "/tmp/bad-config.yaml" "$REPO_ROOT/discourse_docker/containers/bad-config.yaml"
+
+if "$SCRIPT_DIR/k8s-bootstrap" "bad-config" 2>&1 | grep -q "Unsubstituted template variables"; then
+  echo "✓ Validation correctly catches unsubstituted variables"
+  rm -f "$REPO_ROOT/discourse_docker/containers/bad-config.yaml"
+else
+  echo "ERROR: Validation did not catch unsubstituted variables"
+  rm -f "$REPO_ROOT/discourse_docker/containers/bad-config.yaml"
+  exit 1
+fi
+
+echo ""
+echo "=== All tests passed! ==="
