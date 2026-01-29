@@ -1,3 +1,13 @@
+# Discourse container configuration for Kubernetes deployments
+#
+# Key differences from standard discourse_docker setup:
+# 1. No database/Redis services needed during IMAGE BUILD (uses placeholder values)
+# 2. Database migrations run at CONTAINER RUNTIME via MIGRATE_ON_BOOT=1
+# 3. Custom template (k8s-web.template.yml) makes db:migrate/assets:precompile non-failing
+#
+# Build process: ./launcher bootstrap k8s-web (no DB/Redis required)
+# Runtime: Container must be started with real DISCOURSE_DB_HOST and DISCOURSE_REDIS_HOST env vars
+
 templates:
   - "templates/web.template.yml"
   - "templates/web.ratelimited.template.yml"
