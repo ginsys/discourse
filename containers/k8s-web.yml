@@ -1,28 +1,32 @@
 # Discourse container configuration for Kubernetes deployments
 #
-# Key differences from standard discourse_docker setup:
-# 1. No database/Redis services needed during IMAGE BUILD (uses placeholder values)
-# 2. Database migrations run at CONTAINER RUNTIME via MIGRATE_ON_BOOT=1
-# 3. Custom template (k8s-web.template.yml) makes db:migrate/assets:precompile non-failing
+# Build strategy:
+# - Image built with --skip-tags migrate,precompile (no DB/Redis required)
+# - Database migrations and asset precompilation run at container startup
 #
-# Build process: ./launcher bootstrap k8s-web (no DB/Redis required)
+# Build process: ./scripts/k8s-bootstrap k8s-web (no DB/Redis required)
 # Runtime: Container must be started with real DISCOURSE_DB_HOST and DISCOURSE_REDIS_HOST env vars
 
 templates:
-  - "../custom-templates/k8s-web.template.yml"  # K8s overrides: MUST be first to override hooks
   - "templates/web.template.yml"
   - "templates/web.ratelimited.template.yml"
   - "templates/offline-page.template.yml"
 
 env:
   LANG: en_US.UTF-8
-  # Database connection placeholders - these MUST be overridden at runtime with real values
-  # Using "placeholder" prevents db:migrate from running during image build
-  DISCOURSE_DB_HOST: "placeholder"     # Override with real PostgreSQL host at runtime
-  DISCOURSE_REDIS_HOST: "placeholder"  # Override with real Redis host at runtime
-  DISCOURSE_HOSTNAME: "placeholder"    # Override with real hostname at runtime
-  # K8s-specific: Run migrations when container starts (not during build)
-  MIGRATE_ON_BOOT: "1"                 # Runs db:migrate on container startup with real DB
+
+  # Database connection placeholders - MUST be overridden at runtime
+  DISCOURSE_DB_HOST: "placeholder"     # Override with real PostgreSQL host
+  DISCOURSE_REDIS_HOST: "placeholder"  # Override with real Redis host
+  DISCOURSE_HOSTNAME: "placeholder"    # Override with real hostname
+
+  # Runtime migrations and asset compilation
+  MIGRATE_ON_BOOT: "1"          # Always run migrations on startup
+  PRECOMPILE_ON_BOOT: "1"       # Run assets:precompile on first boot
+  SKIP_EMBER_CLI_COMPILE: "1"   # Ember already compiled during build
+
+  # Note: After initial deployment, you can set PRECOMPILE_ON_BOOT=0
+  # for faster pod restarts, unless you have remote themes that update
 
 params:
   version: "{{ DISCOURSE_VERSION }}"   # Passed from CI
