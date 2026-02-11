@@ -132,15 +132,27 @@ jobs:
       - name: Copy manifest into image
         if: steps.check.outputs.exists != 'true' || inputs.force == true
         run: |
-          # Create minimal Dockerfile to add manifest
+          # Extract dependency versions for OCI labels
+          PG_VERSION=$(grep -oP '^ARG PG_MAJOR=\K.+' discourse_docker/image/base/Dockerfile)
+          REDIS_VERSION=$(grep -oP '^REDIS_VERSION=\K.+' discourse_docker/image/base/install-redis)
+          RUBY_VERSION=$(grep -oP '^ARG RUBY_VERSION=\K.+' discourse_docker/image/base/Dockerfile)
+
+          # Create Dockerfile to add manifest and labels
           cat > /tmp/Dockerfile.manifest << 'EOF'
           ARG BASE_IMAGE
           FROM ${BASE_IMAGE}
+          ARG PG_VERSION REDIS_VERSION RUBY_VERSION
+          LABEL org.discourse.postgresql-version="${PG_VERSION}" \
+                org.discourse.redis-version="${REDIS_VERSION}" \
+                org.discourse.ruby-version="${RUBY_VERSION}"
           COPY version-manifest.yaml /version-manifest.yaml
           EOF
 
           docker build \
             --build-arg BASE_IMAGE=local_discourse/basecontainer \
+            --build-arg PG_VERSION="$PG_VERSION" \
+            --build-arg REDIS_VERSION="$REDIS_VERSION" \
+            --build-arg RUBY_VERSION="$RUBY_VERSION" \
             -f /tmp/Dockerfile.manifest \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-${{ steps.config.outputs.hash }} \
             /tmp/
@@ -178,4 +190,9 @@ jobs:
           echo "**Pull command:**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-${HASH}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version manifest:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`yaml" >> $GITHUB_STEP_SUMMARY
+          cat /tmp/version-manifest.yaml >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

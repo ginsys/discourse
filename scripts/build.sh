@@ -53,14 +53,26 @@ rm -f "$REPO_ROOT/discourse_docker/containers/basecontainer.yaml"
 echo "Adding version manifest to image..."
 cd "$REPO_ROOT"
 
+# Extract dependency versions for OCI labels
+PG_VERSION=$(grep -oP '^ARG PG_MAJOR=\K.+' "$REPO_ROOT/discourse_docker/image/base/Dockerfile")
+REDIS_VERSION=$(grep -oP '^REDIS_VERSION=\K.+' "$REPO_ROOT/discourse_docker/image/base/install-redis")
+RUBY_VERSION=$(grep -oP '^ARG RUBY_VERSION=\K.+' "$REPO_ROOT/discourse_docker/image/base/Dockerfile")
+
 cat > /tmp/Dockerfile.manifest << 'EOF'
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
+ARG PG_VERSION REDIS_VERSION RUBY_VERSION
+LABEL org.discourse.postgresql-version="${PG_VERSION}" \
+      org.discourse.redis-version="${REDIS_VERSION}" \
+      org.discourse.ruby-version="${RUBY_VERSION}"
 COPY version-manifest.yaml /version-manifest.yaml
 EOF
 
 docker build \
   --build-arg BASE_IMAGE=local_discourse/basecontainer \
+  --build-arg PG_VERSION="$PG_VERSION" \
+  --build-arg REDIS_VERSION="$REDIS_VERSION" \
+  --build-arg RUBY_VERSION="$RUBY_VERSION" \
   -f /tmp/Dockerfile.manifest \
   -t discourse-k8s:${DISCOURSE_VERSION}-${CONFIG_HASH} \
   /tmp/

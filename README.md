@@ -165,6 +165,11 @@ plugins:
     repo: https://github.com/discourse/discourse-solved
     ref: main
 
+dependencies:
+  postgresql: "15"
+  redis: "7.4.7"
+  ruby: "3.3.8"
+
 build:
   timestamp: "2024-01-15T10:30:00Z"
   builder: "github-actions"
@@ -176,6 +181,14 @@ Retrieve from a running container:
 
 ```bash
 docker run --rm ghcr.io/<owner>/discourse:v3.2.1-abc123def456 cat /version-manifest.yaml
+```
+
+Query dependency versions via OCI labels (no container needed):
+
+```bash
+docker inspect --format '{{index .Config.Labels "org.discourse.postgresql-version"}}' <image>
+docker inspect --format '{{index .Config.Labels "org.discourse.redis-version"}}' <image>
+docker inspect --format '{{index .Config.Labels "org.discourse.ruby-version"}}' <image>
 ```
 
 ## Kubernetes Deployment
