@@ -320,4 +320,6 @@ git commit -m "Update discourse_docker submodule to <commit-sha>"
 
 ## License
 
-This build infrastructure is provided as-is. Discourse itself is licensed under GPL v2.
+This build infrastructure is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+Discourse itself is licensed under GPL v2.
