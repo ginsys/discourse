@@ -6,13 +6,56 @@ on:
   workflow_dispatch:      # Manual trigger
 
 jobs:
+  update-submodule:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Check for submodule updates
+        id: check
+        run: |
+          cd discourse_docker
+          CURRENT=$(git rev-parse HEAD)
+          git fetch origin main
+          LATEST=$(git rev-parse origin/main)
+
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+
+          if [ "$CURRENT" != "$LATEST" ]; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update submodule and push
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
+          cd discourse_docker
+          git checkout ${{ steps.check.outputs.latest }}
+          cd ..
+          git add discourse_docker
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update discourse_docker submodule to $(echo ${{ steps.check.outputs.latest }} | cut -c1-12)"
+          git push
+
   check:
+    needs: update-submodule
     runs-on: ubuntu-latest
     outputs:
       new_version: ${{ steps.check.outputs.new_version }}
       version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Check for new Discourse release
         id: check
@@ -35,9 +78,10 @@ jobs:
           fi
 
   trigger-build:
-    needs: check
+    needs: [update-submodule, check]
     if: needs.check.outputs.new_version == 'true'
     uses: ./.github/workflows/build-image.yml
     with:
       discourse_version: ${{ needs.check.outputs.version }}
+      ref: main
     secrets: inherit

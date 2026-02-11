@@ -74,8 +74,7 @@ Plugins are defined in `config/plugins/*.yaml` as arrays of git clone commands. 
 |----------|---------|---------|
 | `test.yml` | Push/PR to main | Runs validation tests |
 | `build-image.yml` | Manual or called by check-upstream | Builds and pushes image to ghcr.io |
-| `check-upstream.yml` | Daily 6 AM UTC cron | Detects new Discourse releases, triggers build |
-| `update-submodule.yml` | Weekly Monday 7 AM UTC | PRs submodule updates |
+| `check-upstream.yml` | Daily 6 AM UTC cron | Updates submodule, detects new Discourse releases, triggers build |
 
 ### Image Tagging
 

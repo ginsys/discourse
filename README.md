@@ -121,10 +121,11 @@ This creates an image tagged as `discourse-k8s:v3.2.1-<plugin-hash>`.
 ### Automated Builds
 
 The `check-upstream.yml` workflow runs daily at 6 AM UTC:
-1. Queries GitHub API for latest Discourse release
-2. Compares against last-built version in `versions.yaml`
-3. If new version detected, updates `versions.yaml` and triggers build workflow
-4. Build workflow creates image with default plugin set (no plugins)
+1. Updates the `discourse_docker` submodule to latest upstream `main` (pushes directly to main if changed)
+2. Queries GitHub API for latest Discourse release
+3. Compares against last-built version in `versions.yaml`
+4. If new version detected, triggers build workflow against the freshly updated main branch
+5. Build workflow creates image with default plugin set (no plugins)
 
 **Note**: Automated builds use the `default` plugin configuration (empty). Custom plugin builds must be triggered manually.
 
@@ -287,6 +288,8 @@ Ensure Docker has sufficient resources:
 ## Contributing
 
 ### Updating discourse_docker Submodule
+
+The submodule is updated automatically each day by the `check-upstream.yml` workflow. To update manually:
 
 ```bash
 cd discourse_docker
