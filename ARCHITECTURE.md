@@ -422,13 +422,17 @@ Simply don't offer reply-by-email functionality.
 
 In Kubernetes deployments, the separation between build-time and runtime is critical for reliability and security.
 
-**Baked at Build Time:**
+**Baked at Build Time** (via `pups --skip-tags migrate,precompile`):
 - Discourse version (from git tag/commit)
 - Plugin list and versions (from git SHAs)
 - Ruby gems (`bundle install`)
-- **Precompiled assets** (`rake assets:precompile`)
 - Nginx configuration
 - Base system packages
+- Ember CLI compilation (`SKIP_EMBER_CLI_COMPILE=1` prevents re-running at boot)
+
+**Handled at Deploy Time** (via Job or on-boot env vars):
+- Database migrations (`rake db:migrate`)
+- Asset precompilation (`rake assets:precompile`)
 
 **Configured at Runtime:**
 - Database connection parameters
@@ -438,27 +442,27 @@ In Kubernetes deployments, the separation between build-time and runtime is crit
 - Site hostname
 - Worker/process counts
 
-**Critical: Assets must be precompiled at build time, not boot time.**
+**Note:** The build uses `--skip-tags migrate,precompile` because both require a running database. Migrations and asset precompilation are run either via a Kubernetes Job (recommended for multi-replica) or on boot by setting `MIGRATE_ON_BOOT=1` and `PRECOMPILE_ON_BOOT=1` (suitable for single-pod deployments). Both variables default to `0` in the image.
 
 ### 8.2 Migration Strategy
 
 **⚠️ Never use `MIGRATE_ON_BOOT=1` in multi-replica deployments.**
 
-Running migrations on pod startup creates race conditions where multiple pods attempt concurrent schema changes, leading to:
+`MIGRATE_ON_BOOT` and `PRECOMPILE_ON_BOOT` default to `0` in the image. For single-pod deployments, setting both to `1` is acceptable. For multi-replica deployments, running migrations on pod startup creates race conditions where multiple pods attempt concurrent schema changes, leading to:
 - Lock contention
 - Failed migrations
 - Inconsistent database state
 - Pod crash loops
 
-**Required Approach: Kubernetes Job**
+**Required Approach for Multi-Replica: Kubernetes Job**
 
-Migrations must run as a separate Kubernetes Job before deploying new pods:
+Migrations must run as a separate Kubernetes Job before deploying new pods. See `kubernetes/base/migration-job.yaml` for the production-ready manifest.
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: discourse-migrate-20260128-v3-2-1
+  name: discourse-migrate-20260128-v2026-1-0
 spec:
   template:
     spec:
@@ -481,7 +485,7 @@ spec:
               value: "5432"
       containers:
         - name: migrate
-          image: discourse:v3.2.1
+          image: ghcr.io/ginsys/discourse:v2026.1.0-abc123def456
           command:
             - bash
             - -c
@@ -524,46 +528,50 @@ spec:
 
 **Deterministic Builds:**
 
-Every image must be tagged with a manifest of its contents:
+Every image is tagged with its version and a hash of the full merged configuration:
 
 ```
-discourse:v3.2.1-plugins-abc123def
+ghcr.io/ginsys/discourse:v2026.1.0-abc123def456
 ```
 
-**Tag Format:**
-```
-<discourse-version>-plugins-<plugin-hash>
-```
+**Tag Formats:**
 
-**Plugin Hash Generation:**
+| Format | Example | Purpose |
+|--------|---------|---------|
+| `v{version}-{config-hash}` | `v2026.1.0-abc123def456` | Immutable tag |
+| `{major.minor}-latest` | `2026.1-latest` | Rolling tag for latest build |
+
+**Config Hash Generation:**
 ```bash
-# Generate deterministic hash from plugin versions
-echo "discourse-solved:a1b2c3d4
-discourse-voting:e5f6g7h8
-discourse-sitemap:i9j0k1l2" | sha256sum | cut -c1-12
+# Hash is SHA256 of the full merged config (base + plugins), first 12 chars
+sha256sum /tmp/container.yaml | cut -c1-12
 ```
 
-**Version Manifest (stored in image):**
+The hash covers the entire merged configuration file, not just plugins. This means any change to base config or plugin list produces a different tag.
+
+**Version Manifest (stored in image at `/version-manifest.yaml`):**
 ```yaml
-# /version-manifest.yaml
 discourse:
-  version: "v3.2.1"
-  commit: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0"
+  version: "v2026.1.0"
+
+plugins_hash: "abc123def456"
 
 plugins:
-  - name: discourse-solved
-    repo: https://github.com/discourse/discourse-solved
-    commit: "a1b2c3d4e5f6g7h8"
+  []
 
-  - name: discourse-voting
-    repo: https://github.com/discourse/discourse-voting
-    commit: "e5f6g7h8i9j0k1l2"
+dependencies:
+  postgresql: "15"
+  redis: "7.4.7"
+  ruby: "3.3.8"
 
 build:
   timestamp: "2026-01-28T10:30:00Z"
   builder: "github-actions"
-  build_id: "12345"
+  workflow_run: "1234567890"
+  commit: "abc123..."
 ```
+
+Dependency versions are extracted from the `discourse_docker` submodule at build time. Images also carry OCI labels (`org.discourse.postgresql-version`, `org.discourse.redis-version`, `org.discourse.ruby-version`) queryable via `docker inspect`.
 
 ### 8.4 CI/CD Build Guardrails
 
@@ -589,7 +597,7 @@ fi
 ```bash
 # CI environment should never have production credentials
 # Build-time variables:
-- DISCOURSE_VERSION=v3.2.1
+- DISCOURSE_VERSION=v2026.1.0
 - PLUGIN_LIST=solved,voting,sitemap
 
 # Runtime variables (NOT in CI):
@@ -611,12 +619,12 @@ Discourse migrations are generally forward-compatible:
 
 **Safe Rollback Scenario:**
 ```
-Deploy v3.2.1:
+Deploy v2026.1.0:
   - Adds new table: user_badges_v2
   - New code uses user_badges_v2
   - Old code ignores user_badges_v2
 
-Rollback to v3.2.0:
+Rollback to v2025.12.0:
   - Old code still works (doesn't query new table)
   - New table remains (harmless)
   - No data loss
@@ -624,11 +632,11 @@ Rollback to v3.2.0:
 
 **Unsafe Rollback Scenario (requires DB rollback):**
 ```
-Deploy v3.2.1:
+Deploy v2026.1.0:
   - Removes column: users.legacy_field
   - Migration: ALTER TABLE users DROP COLUMN legacy_field
 
-Rollback to v3.2.0:
+Rollback to v2025.12.0:
   - Old code expects users.legacy_field
   - ERROR: column does not exist
   - Requires restoring DB from backup
@@ -659,7 +667,7 @@ end
 kubectl scale deployment discourse-web --replicas=0
 
 # 2. If code rollback is sufficient:
-kubectl set image deployment/discourse-web discourse=discourse:v3.2.0-plugins-xyz789
+kubectl set image deployment/discourse-web discourse=ghcr.io/ginsys/discourse:v2025.12.0-xyz789abcdef
 
 # 3. If DB rollback required (DESTRUCTIVE):
 #    a. Take fresh backup
@@ -670,11 +678,18 @@ kubectl set image deployment/discourse-web discourse=discourse:v3.2.0-plugins-xy
 
 **Best Practice:** Thoroughly test migrations in staging, including rollback procedures, before production deployment.
 
-### 8.6 Environment Variable Reference (Removed from Build)
+### 8.6 Boot-Time Environment Variables
 
-**These variables should NEVER be set at build time:**
-- ~~`MIGRATE_ON_BOOT`~~ - Removed; use Migration Job
-- ~~`PRECOMPILE_ON_BOOT`~~ - Removed; assets precompiled at build time
+These variables control what happens when the container starts. Both default to `0` in the image:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MIGRATE_ON_BOOT` | `0` | Run `rake db:migrate` on container start |
+| `PRECOMPILE_ON_BOOT` | `0` | Run `rake assets:precompile` on container start |
+
+**Single-pod deployments:** Set both to `1`. Migrations and precompilation run on boot.
+
+**Multi-replica deployments:** Leave at `0`. Use a Kubernetes Job (see `kubernetes/base/migration-job.yaml`) to run migrations and precompilation before rolling out new pods.
 
 See Section 9 for runtime environment variables.
 
@@ -909,20 +924,20 @@ spec:
 **1. Build New Image**
 ```bash
 # Build with new Discourse version + current plugins
-docker build -t discourse:v3.2.2-plugins-abc123 .
+docker build -t ghcr.io/ginsys/discourse:v2026.2.0-abc123def456 .
 
 # Push to registry
-docker push registry.example.com/discourse:v3.2.2-plugins-abc123
+docker push ghcr.io/ginsys/discourse:v2026.2.0-abc123def456
 ```
 
 **2. Database Backup**
 ```bash
 # CloudNativePG on-demand backup
-kubectl cnpg backup discourse-pg --backup-name pre-v3-2-2-upgrade
+kubectl cnpg backup discourse-pg --backup-name pre-v2026-2-0-upgrade
 
 # Or manual pg_dump
 kubectl exec -n discourse discourse-pg-1 -- \
-  pg_dump -U discourse discourse > backup-pre-v3-2-2.sql
+  pg_dump -U discourse discourse > backup-pre-v2026-2-0.sql
 ```
 
 **3. Scale Down Sidekiq (if separated)**
@@ -937,21 +952,21 @@ kubectl scale deployment/discourse-sidekiq --replicas=0
 **4. Run Migration Job**
 ```bash
 # Apply migration Job manifest
-kubectl apply -f discourse-migrate-v3-2-2-job.yaml
+kubectl apply -f discourse-migrate-v2026-2-0-job.yaml
 
 # Watch migration progress
-kubectl logs -f job/discourse-migrate-20260128-v3-2-2
+kubectl logs -f job/discourse-migrate-20260128-v2026-2-0
 
 # Wait for completion
 kubectl wait --for=condition=complete --timeout=600s \
-  job/discourse-migrate-20260128-v3-2-2
+  job/discourse-migrate-20260128-v2026-2-0
 ```
 
 **5. Roll Web Deployment**
 ```bash
 # Update image
 kubectl set image deployment/discourse-web \
-  discourse=registry.example.com/discourse:v3.2.2-plugins-abc123
+  discourse=ghcr.io/ginsys/discourse:v2026.2.0-abc123def456
 
 # Watch rollout
 kubectl rollout status deployment/discourse-web
@@ -964,7 +979,7 @@ kubectl get pods -l app=discourse,component=web
 ```bash
 # Update image and scale back up
 kubectl set image deployment/discourse-sidekiq \
-  discourse=registry.example.com/discourse:v3.2.2-plugins-abc123
+  discourse=ghcr.io/ginsys/discourse:v2026.2.0-abc123def456
 
 kubectl scale deployment/discourse-sidekiq --replicas=2
 
@@ -991,7 +1006,7 @@ kubectl exec -it deployment/discourse-web -- curl http://localhost/srv/status
 **8. Cleanup**
 ```bash
 # Remove old migration Job (after validation)
-kubectl delete job/discourse-migrate-20260128-v3-2-2
+kubectl delete job/discourse-migrate-20260128-v2026-2-0
 
 # (Optional) Remove old image from registry
 # Keep at least N-1 version for rollback
@@ -1017,14 +1032,14 @@ kubectl scale deployment/discourse-sidekiq --replicas=0
 
 # 2. Restore database from backup
 # CloudNativePG recovery:
-kubectl cnpg restore discourse-pg --backup-name pre-v3-2-2-upgrade
+kubectl cnpg restore discourse-pg --backup-name pre-v2026-2-0-upgrade
 
 # Or manual restore:
 kubectl exec -i discourse-pg-1 -- \
-  psql -U discourse discourse < backup-pre-v3-2-2.sql
+  psql -U discourse discourse < backup-pre-v2026-2-0.sql
 
 # 3. Deploy previous version
-kubectl set image deployment/discourse-web discourse=discourse:v3.2.1-plugins-xyz789
+kubectl set image deployment/discourse-web discourse=ghcr.io/ginsys/discourse:v2025.12.0-xyz789abcdef
 kubectl scale deployment/discourse-web --replicas=3
 
 # 4. Verify data integrity
@@ -1502,54 +1517,6 @@ Not all Discourse plugins are compatible with Kubernetes multi-replica deploymen
 
 ---
 
-## 13. Next Steps
-
-### Phase 1: Docker Image Build Strategy (NEXT)
-
-**Objective:** Investigate and document how to build Docker images based on upstream `discourse/discourse_docker` repository.
-
-**Goals:**
-1. **Avoid forking** the upstream repository
-2. Create a **tracking repository** that:
-   - Monitors upstream releases
-   - Contains build scripts for our custom images
-   - Manages plugin configurations
-3. Establish **automated build pipeline** triggered by:
-   - Upstream version releases
-   - Plugin updates
-   - Configuration changes
-
-**Key Questions to Investigate:**
-- How does `./launcher bootstrap` work internally?
-- Can we replicate the build process in CI/CD (GitHub Actions, etc.)?
-- What's the minimum viable build configuration for K8s?
-- How to handle plugin inclusion at build time?
-- Image tagging and versioning strategy?
-
-**Deliverables:**
-- Build repository structure
-- CI/CD pipeline configuration
-- Documentation for adding/removing plugins
-- Version tracking mechanism
-
-### Phase 2: Kubernetes Manifests
-
-- Base Kustomize structure
-- CloudNativePG Cluster definition
-- Valkey StatefulSet
-- Discourse Deployment
-- Ingress configuration
-- Secret management approach
-
-### Phase 3: Deployment Automation
-
-- Per-customer overlay structure
-- GitOps integration
-- Backup/restore procedures
-- Upgrade runbook
-
----
-
 ## Appendix A: Upstream Discourse Docker Architecture
 
 ### Base Image (`discourse/base`)
@@ -1566,6 +1533,7 @@ Contains:
 
 ### Bootstrap Process
 
+Standard upstream bootstrap:
 ```
 1. Pull discourse/base
 2. Apply pups templates (web.template.yml, etc.)
@@ -1576,6 +1544,8 @@ Contains:
 7. Commit as new image
 ```
 
+**This project's build** uses `pups --skip-tags migrate,precompile`, which skips step 6 (and any migration steps). Precompilation and migrations are instead handled at deploy time via a Kubernetes Job or on-boot environment variables.
+
 ### What's Baked vs Runtime
 
 | Baked at Build Time | Configured at Runtime |
@@ -1583,9 +1553,11 @@ Contains:
 | Ruby version | Database connection |
 | Discourse version | Redis connection |
 | Plugins | SMTP settings |
-| Precompiled assets | S3 settings |
-| Nginx config | Site hostname |
-| Bundled gems | Worker counts |
+| Nginx config | S3 settings |
+| Bundled gems | Site hostname |
+| Ember CLI assets | Worker counts |
+
+**Note:** In this project's K8s build, asset precompilation and DB migrations are deferred to deploy time (handled by a Job or on-boot env vars) since the build runs without a database.
 
 ---
 

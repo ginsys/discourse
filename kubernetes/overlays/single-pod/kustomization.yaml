@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Single-pod overlay: migrations and precompilation run on boot.
+# The migration Job from base is still included but is optional -
+# you can skip applying it since MIGRATE_ON_BOOT=1 handles migrations.
+
+resources:
+  - ../../base
+
+patches:
+  - path: patches/deployment.yaml

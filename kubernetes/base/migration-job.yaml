@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: discourse-migrate
+  namespace: discourse
+  labels:
+    app: discourse
+    component: migrate
+  annotations:
+    # For Flux: delete and recreate when immutable fields (image) change
+    kustomize.toolkit.fluxcd.io/force: enabled
+    # For ArgoCD: run before Deployment, delete previous Job first
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    # For Helm: run as pre-upgrade hook, delete previous Job first
+    helm.sh/hook: pre-upgrade,pre-install
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: discourse
+        component: migrate
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:15
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h "$DISCOURSE_DB_HOST" -p "$DISCOURSE_DB_PORT"; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+          envFrom:
+            - configMapRef:
+                name: discourse-env
+      containers:
+        - name: migrate
+          image: ghcr.io/ginsys/discourse:TAG
+          command:
+            - bash
+            - -c
+            - |
+              set -e
+              cd /var/www/discourse
+
+              echo "Running database migrations..."
+              su discourse -c 'bundle exec rake db:migrate'
+
+              echo "Running asset precompilation..."
+              su discourse -c 'bundle exec rake assets:precompile'
+
+              echo "Migrations and precompilation complete."
+          envFrom:
+            - configMapRef:
+                name: discourse-env
+          env:
+            - name: DISCOURSE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: discourse-secrets
+                  key: db-password
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"

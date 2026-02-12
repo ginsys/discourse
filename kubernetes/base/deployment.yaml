@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discourse-web
+  namespace: discourse
+  labels:
+    app: discourse
+    component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: discourse
+      component: web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: discourse
+        component: web
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: discourse
+          image: ghcr.io/ginsys/discourse:TAG
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: discourse-env
+          env:
+            # Secrets should be provided via a Secret resource
+            - name: DISCOURSE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: discourse-secrets
+                  key: db-password
+            - name: DISCOURSE_SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: discourse-secrets
+                  key: smtp-password
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+            - name: tmp
+              mountPath: /var/www/discourse/tmp
+          startupProbe:
+            httpGet:
+              path: /srv/status
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /srv/status
+              port: 80
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /srv/status
+              port: 80
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    sv stop unicorn
+                    sv stop sidekiq
+                    sleep 10
+      volumes:
+        - name: shared
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

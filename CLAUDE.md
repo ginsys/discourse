@@ -53,7 +53,7 @@ git add discourse_docker
 The core design constraint: Discourse's standard bootstrap requires a running PostgreSQL and Redis, which aren't available in CI. This project solves it by:
 
 1. **Build time**: `k8s-bootstrap` runs `pups --skip-tags migrate,precompile` to install everything except DB-dependent operations
-2. **Runtime**: Containers start with `MIGRATE_ON_BOOT=1` and `PRECOMPILE_ON_BOOT=1` to handle those at deploy time
+2. **Deploy time**: Migrations and asset precompilation are handled by a Kubernetes Job (multi-replica) or by setting `MIGRATE_ON_BOOT=1` and `PRECOMPILE_ON_BOOT=1` (single-pod). Both default to `0` in the image
 
 ### Build Pipeline Flow
 
@@ -78,8 +78,8 @@ Plugins are defined in `config/plugins/*.yaml` as arrays of git clone commands. 
 
 ### Image Tagging
 
-- `v3.2.1-abc123def456` - Immutable tag (version + config SHA256 hash)
-- `3.2-latest` - Rolling tag for latest build of that major.minor
+- `v2026.1.0-abc123def456` - Immutable tag (version + config SHA256 hash)
+- `2026.1-latest` - Rolling tag for latest build of that major.minor
 
 ## Key Files
 
@@ -88,8 +88,13 @@ Plugins are defined in `config/plugins/*.yaml` as arrays of git clone commands. 
 - `scripts/k8s-bootstrap` - Core build script (validates pups, merges templates, runs build)
 - `scripts/build.sh` - Local build helper (merges config + plugins, calls k8s-bootstrap)
 - `scripts/generate-manifest.sh` - Creates `/version-manifest.yaml` embedded in images (includes dependency versions extracted from `discourse_docker/image/base/`)
+- `scripts/list-versions` - Query available Discourse stable versions
+- `scripts/test-k8s-bootstrap` - Full integration test (requires Docker)
+- `scripts/test-k8s-bootstrap-validation` - Quick validation test (no Docker)
 - `versions.yaml` - Tracks last-built Discourse version (updated by CI)
 - `discourse_docker/` - Git submodule of upstream discourse/discourse_docker
+- `ARCHITECTURE.md` - Detailed architecture and K8s deployment patterns
+- `kubernetes/` - Kustomize-based K8s manifests (base and overlays)
 
 ### Version Manifest
 

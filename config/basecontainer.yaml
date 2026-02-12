@@ -21,12 +21,11 @@ env:
   DISCOURSE_HOSTNAME: "placeholder"    # Override with real hostname
 
   # Runtime migrations and asset compilation
-  MIGRATE_ON_BOOT: "1"          # Always run migrations on startup
-  PRECOMPILE_ON_BOOT: "1"       # Run assets:precompile on first boot
+  # Defaults to 0 for multi-replica safety (use a Job for migrations)
+  # Set to 1 for single-pod deployments where on-boot is acceptable
+  MIGRATE_ON_BOOT: "0"
+  PRECOMPILE_ON_BOOT: "0"
   SKIP_EMBER_CLI_COMPILE: "1"   # Ember already compiled during build
-
-  # Note: After initial deployment, you can set PRECOMPILE_ON_BOOT=0
-  # for faster pod restarts, unless you have remote themes that update
 
 params:
   version: "{{ DISCOURSE_VERSION }}"   # Passed from CI

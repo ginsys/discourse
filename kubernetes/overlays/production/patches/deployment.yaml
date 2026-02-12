@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discourse-web
+  namespace: discourse
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: discourse
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "4000m"

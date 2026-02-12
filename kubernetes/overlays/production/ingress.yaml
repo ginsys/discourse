@@ -1,0 +1,44 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: discourse-web
+  namespace: discourse
+  labels:
+    app: discourse
+    component: web
+  annotations:
+    # Sticky sessions for MessageBus real-time updates
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "DISCOURSE_AFFINITY"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "172800"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "172800"
+
+    # WebSocket support
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+
+    # Disable buffering for real-time endpoints
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+
+    # Allow large uploads
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+
+    # TLS via cert-manager
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - forum.example.com
+      secretName: discourse-tls
+  rules:
+    - host: forum.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: discourse-web
+                port:
+                  number: 80

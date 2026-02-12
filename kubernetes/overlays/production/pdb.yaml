@@ -1,0 +1,14 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: discourse-web-pdb
+  namespace: discourse
+  labels:
+    app: discourse
+    component: web
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: discourse
+      component: web

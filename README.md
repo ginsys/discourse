@@ -22,10 +22,12 @@ This repository:
 
 ### Build vs Runtime Separation
 
-The Go-based launcher in `discourse_docker` separates operations:
-- `./launcher build` - Creates image (NO database required) - runs at CI time
-- `./launcher migrate` - Runs migrations - handled by Kubernetes Jobs at deploy time
-- `./launcher configure` - Precompiles assets - part of build process
+Discourse's standard bootstrap requires a running PostgreSQL and Redis, which aren't available in CI. This project solves that by splitting the process:
+
+- **Build time**: `k8s-bootstrap` runs `pups --stdin --skip-tags migrate,precompile` inside a `discourse/base` container, installing everything except DB-dependent operations (migrations) and asset precompilation
+- **Runtime**: Database migrations and asset precompilation are handled either by a Kubernetes Job (recommended for multi-replica) or by setting `MIGRATE_ON_BOOT=1` and `PRECOMPILE_ON_BOOT=1` environment variables (suitable for single-pod deployments)
+
+Both variables default to `0` in the image, so nothing runs on boot unless explicitly enabled.
 
 ### Why No `docker_manager`?
 
@@ -38,7 +40,8 @@ discourse-k8s-image/
 ├── .github/
 │   └── workflows/
 │       ├── check-upstream.yml      # Cron: detect new Discourse releases
-│       └── build-image.yml         # Build and push Docker image
+│       ├── build-image.yml         # Build and push Docker image
+│       └── test.yml                # Run validation tests on push/PR
 │
 ├── discourse_docker/               # Git submodule (upstream)
 │
@@ -49,9 +52,21 @@ discourse-k8s-image/
 │       └── example.yaml            # Example plugin configuration
 │
 ├── scripts/
-│   ├── k8s-bootstrap                # Custom bootstrap script
-│   └── generate-manifest.sh        # Create version manifest
+│   ├── k8s-bootstrap               # Core build script
+│   ├── build.sh                    # Local build helper
+│   ├── generate-manifest.sh        # Create version manifest
+│   ├── list-versions               # Query available Discourse versions
+│   ├── test-k8s-bootstrap          # Full integration test (requires Docker)
+│   └── test-k8s-bootstrap-validation  # Quick validation test (no Docker)
 │
+├── kubernetes/
+│   ├── base/                       # Kustomize base manifests
+│   └── overlays/
+│       ├── single-pod/             # Single replica, migrations on boot
+│       └── production/             # Multi-replica, HPA, PDB, Ingress
+│
+├── ARCHITECTURE.md                 # Detailed architecture and K8s patterns
+├── LICENSE
 ├── versions.yaml                   # Tracks last-built versions
 └── README.md
 ```
@@ -60,8 +75,10 @@ discourse-k8s-image/
 
 | Tag Format | Example | Purpose |
 |------------|---------|---------|
-| `v3.2.1-abc123def456` | Full version + config hash | Immutable, specific build |
-| `3.2-latest` | Major.minor + latest | Rolling tag for minor version |
+| `v2026.1.0-abc123def456` | Full version + config hash | Immutable, specific build |
+| `2026.1-latest` | Major.minor + latest | Rolling tag for minor version |
+
+The config hash is a 12-character SHA256 of the full merged configuration (base + plugins), ensuring different plugin sets produce different image tags.
 
 ## Usage
 
@@ -94,7 +111,7 @@ Trigger a build with your plugin configuration:
 gh workflow run build-image.yml -f plugins=acme
 
 # Or specify version and plugins
-gh workflow run build-image.yml -f discourse_version=v3.2.1 -f plugins=acme
+gh workflow run build-image.yml -f discourse_version=v2026.1.0 -f plugins=acme
 ```
 
 **Note**: Different plugin sets generate different config hashes, ensuring unique image tags for each combination.
@@ -104,19 +121,23 @@ gh workflow run build-image.yml -f discourse_version=v3.2.1 -f plugins=acme
 1. Go to Actions tab in GitHub
 2. Select "Build Discourse Image" workflow
 3. Click "Run workflow"
-4. Enter the Discourse version (e.g., `v3.2.1`) or leave empty for latest
+4. Enter the Discourse version (e.g., `v2026.1.0`) or leave empty for latest
 5. Enter the plugin config name (e.g., `acme`) or leave as `default` for no plugins
 6. Click "Run workflow"
 
-### Local Testing
+### Local Build
 
-Build an image locally:
+Build an image locally using `build.sh`:
 
 ```bash
-./scripts/build.sh v3.2.1
+# Build with default plugins (none)
+./scripts/build.sh v2026.1.0
+
+# Build with a specific plugin set
+./scripts/build.sh v2026.1.0 acme
 ```
 
-This creates an image tagged as `discourse-k8s:v3.2.1-<plugin-hash>`.
+This creates an image tagged as `discourse-k8s:v2026.1.0-<config-hash>`.
 
 ### Automated Builds
 
@@ -129,13 +150,21 @@ The `check-upstream.yml` workflow runs daily at 6 AM UTC:
 
 **Note**: Automated builds use the `default` plugin configuration (empty). Custom plugin builds must be triggered manually.
 
+### CI/CD Workflows
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `test.yml` | Push/PR to main | Runs `test-k8s-bootstrap-validation` |
+| `build-image.yml` | Manual or called by check-upstream | Builds and pushes image to ghcr.io |
+| `check-upstream.yml` | Daily 6 AM UTC cron or manual | Updates submodule, detects new releases, triggers build |
+
 ## GitHub Container Registry
 
 Images are published to GitHub Container Registry (GHCR):
 
 ```
-ghcr.io/<owner>/discourse:v3.2.1-abc123def456
-ghcr.io/<owner>/discourse:3.2-latest
+ghcr.io/ginsys/discourse:v2026.1.0-abc123def456
+ghcr.io/ginsys/discourse:2026.1-latest
 ```
 
 ### Pulling Images
@@ -145,10 +174,10 @@ ghcr.io/<owner>/discourse:3.2-latest
 echo $GITHUB_TOKEN | docker login ghcr.io -u <username> --password-stdin
 
 # Pull specific version
-docker pull ghcr.io/<owner>/discourse:v3.2.1-abc123def456
+docker pull ghcr.io/ginsys/discourse:v2026.1.0-abc123def456
 
 # Pull latest for major.minor
-docker pull ghcr.io/<owner>/discourse:3.2-latest
+docker pull ghcr.io/ginsys/discourse:2026.1-latest
 ```
 
 ## Version Manifest
@@ -157,14 +186,12 @@ Each image includes `/version-manifest.yaml` with build details:
 
 ```yaml
 discourse:
-  version: "v3.2.1"
+  version: "v2026.1.0"
 
 plugins_hash: "abc123def456"
 
 plugins:
-  - name: discourse-solved
-    repo: https://github.com/discourse/discourse-solved
-    ref: main
+  []
 
 dependencies:
   postgresql: "15"
@@ -172,7 +199,7 @@ dependencies:
   ruby: "3.3.8"
 
 build:
-  timestamp: "2024-01-15T10:30:00Z"
+  timestamp: "2026-01-15T10:30:00Z"
   builder: "github-actions"
   workflow_run: "1234567890"
   commit: "abc123..."
@@ -181,7 +208,7 @@ build:
 Retrieve from a running container:
 
 ```bash
-docker run --rm ghcr.io/<owner>/discourse:v3.2.1-abc123def456 cat /version-manifest.yaml
+docker run --rm ghcr.io/ginsys/discourse:v2026.1.0-abc123def456 cat /version-manifest.yaml
 ```
 
 Query dependency versions via OCI labels (no container needed):
@@ -196,59 +223,68 @@ docker inspect --format '{{index .Config.Labels "org.discourse.ruby-version"}}' 
 
 ### Environment Variables
 
-The image expects these to be overridden at runtime:
+The image uses the following environment variables at runtime. Both boot-time variables default to `0` in the image:
 
-- `DISCOURSE_DB_HOST` - PostgreSQL hostname
-- `DISCOURSE_REDIS_HOST` - Redis hostname
-- `DISCOURSE_HOSTNAME` - Public hostname for Discourse
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DISCOURSE_DB_HOST` | PostgreSQL hostname | `placeholder` |
+| `DISCOURSE_REDIS_HOST` | Redis/Valkey hostname | `placeholder` |
+| `DISCOURSE_HOSTNAME` | Public hostname for Discourse | `placeholder` |
+| `MIGRATE_ON_BOOT` | Run `db:migrate` on container start | `0` |
+| `PRECOMPILE_ON_BOOT` | Run `assets:precompile` on container start | `0` |
 
-Example Kubernetes deployment:
+For single-pod deployments, set `MIGRATE_ON_BOOT=1` and `PRECOMPILE_ON_BOOT=1`. For multi-replica deployments, leave at `0` and use a Kubernetes Job (see below).
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: discourse-web
-spec:
-  replicas: 2
-  template:
-    spec:
-      containers:
-      - name: discourse
-        image: ghcr.io/<owner>/discourse:v3.2.1-abc123def456
-        env:
-        - name: DISCOURSE_DB_HOST
-          value: "postgres.default.svc.cluster.local"
-        - name: DISCOURSE_REDIS_HOST
-          value: "redis.default.svc.cluster.local"
-        - name: DISCOURSE_HOSTNAME
-          value: "discourse.example.com"
-        # Add other required env vars...
+### Deployment Approaches
+
+**Single-pod** (simplest):
+```bash
+kubectl kustomize kubernetes/overlays/single-pod/ | kubectl apply -f -
+```
+Migrations and precompilation run on boot. No separate Job needed.
+
+**Multi-replica** (production):
+```bash
+# 1. Delete previous migration Job (Jobs are immutable — can't update image)
+kubectl delete job discourse-migrate -n discourse --ignore-not-found
+
+# 2. Run migrations as a Job (update image tag in migration-job.yaml first)
+kubectl apply -f kubernetes/base/migration-job.yaml
+kubectl wait --for=condition=complete job/discourse-migrate -n discourse --timeout=600s
+
+# 3. Then deploy/update the application
+kubectl kustomize kubernetes/overlays/production/ | kubectl apply -f -
 ```
 
-### Database Migrations
+If using a GitOps tool, the Job annotations handle this automatically: Flux (`kustomize.toolkit.fluxcd.io/force`), ArgoCD (`BeforeHookCreation`), Helm (`before-hook-creation`).
 
-Run migrations as a Kubernetes Job before deploying new versions:
+See `kubernetes/` for full Kustomize manifests and `ARCHITECTURE.md` for detailed deployment patterns, probe tuning, HPA, PDB, and operational runbooks.
 
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: discourse-migrate-v3.2.1
-spec:
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-      - name: migrate
-        image: ghcr.io/<owner>/discourse:v3.2.1-abc123def456
-        command: ["/sbin/boot"]
-        args: ["migrate"]
-        env:
-        - name: DISCOURSE_DB_HOST
-          value: "postgres.default.svc.cluster.local"
-        # Add other required env vars...
+## Testing
+
+### Quick Validation (No Docker Required)
+
+```bash
+./scripts/test-k8s-bootstrap-validation
 ```
+
+Validates error detection and config path correctness. Runs in CI on every push/PR.
+
+### Full Integration Test (Requires Docker)
+
+```bash
+./scripts/test-k8s-bootstrap
+```
+
+Builds an actual image and verifies the installed Discourse version matches.
+
+### Query Available Versions
+
+```bash
+./scripts/list-versions
+```
+
+Lists recent stable Discourse releases from the GitHub API.
 
 ## CI/CD Security
 
@@ -270,7 +306,7 @@ Only one secret is required:
 
 Ensure the Discourse version exists as a git tag in the upstream repository:
 ```bash
-curl -s https://api.github.com/repos/discourse/discourse/tags | jq -r '.[].name'
+./scripts/list-versions 20
 ```
 
 ### Plugin Installation Fails
@@ -304,9 +340,9 @@ git commit -m "Update discourse_docker submodule to <commit-sha>"
 
 #### Base Configuration Changes
 1. Make changes to `config/basecontainer.yaml`
-2. Test locally using `./scripts/k8s-bootstrap basecontainer`
-3. Commit and push changes
-4. Trigger manual workflow to test in CI
+2. Run `./scripts/test-k8s-bootstrap-validation` to validate
+3. For full verification: `./scripts/build.sh v2026.1.0`
+4. Commit and push changes
 
 #### Plugin Configuration Changes
 1. Create or modify plugin config in `config/plugins/`
