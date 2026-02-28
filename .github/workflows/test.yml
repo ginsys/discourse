@@ -17,3 +17,11 @@ jobs:
 
       - name: Run k8s-bootstrap validation test
         run: ./scripts/test-k8s-bootstrap-validation
+
+      - name: Validate upstream version extraction
+        run: |
+          eval "$(./scripts/extract-upstream-versions.sh)"
+          for var in PG_VERSION REDIS_VERSION RUBY_VERSION BASE_IMAGE; do
+            [ -n "${!var}" ] || { echo "FAIL: $var is empty"; exit 1; }
+            echo "$var=${!var}"
+          done

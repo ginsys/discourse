@@ -31,7 +31,11 @@ fi
 validate_pups() {
   echo "Validating pups support..."
   local pups_help
-  pups_help=$(docker run --rm "$BASE_IMAGE" pups --help 2>&1 || true)
+  if ! pups_help=$(docker run --rm "$BASE_IMAGE" pups --help 2>&1); then
+    echo "ERROR: Failed to run Docker (is Docker running? Can it pull $BASE_IMAGE?)"
+    echo "Docker output: $pups_help"
+    exit 1
+  fi
 
   if ! echo "$pups_help" | grep -q "skip-tags"; then
     echo "ERROR: pups does not support --skip-tags flag"

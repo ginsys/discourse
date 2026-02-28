@@ -701,15 +701,15 @@ This project deliberately deviates from the upstream `discourse_docker/launcher`
 
 | Value | Source | Extraction |
 |-------|--------|------------|
-| Base image tag | `discourse_docker/launcher` line 1 | `grep '^image='` in `k8s-bootstrap` |
+| Base image tag | `discourse_docker/launcher` line 1 | `grep '^image='` in `extract-upstream-versions.sh` |
 | PostgreSQL version | `discourse_docker/image/base/Dockerfile` | `ARG PG_MAJOR=` regex |
 | Redis version | `discourse_docker/image/base/install-redis` | `REDIS_VERSION=` regex |
 | Ruby version | `discourse_docker/image/base/Dockerfile` | `ARG RUBY_VERSION=` regex |
 
-All extractions are centralized in `scripts/extract-upstream-versions.sh`, which is sourced by `build.sh`, `generate-manifest.sh`, and the CI workflow. The base image extraction in `k8s-bootstrap` uses the same pattern with a three-tier fallback: `BASE_IMAGE` env override → extracted from launcher → hardcoded safety net.
+All extractions are centralized in `scripts/extract-upstream-versions.sh`, which is called by `k8s-bootstrap`, `build.sh`, `generate-manifest.sh`, and the CI workflow. `k8s-bootstrap` calls the shared helper unless `BASE_IMAGE` is already set via env override. No hardcoded fallback — extraction failure is fatal.
 
 **Known risks:**
-- Regex patterns are fragile — if upstream changes from `ARG PG_MAJOR=15` to a different format, extraction silently fails (but validation catches empty values)
+- Regex patterns are fragile — if upstream changes from `ARG PG_MAJOR=15` to a different format, the validation loop produces an explicit "Failed to extract" error
 - Template extraction via `sed` in `k8s-bootstrap` assumes the `templates:` block format is stable
 - The `_FILE_SEPERATOR_` delimiter is a pups convention (the typo is intentional upstream)
 

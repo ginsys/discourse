@@ -11,12 +11,12 @@
 set -e
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DD="$REPO_ROOT/discourse_docker"
+DD="${DD_DIR:-$REPO_ROOT/discourse_docker}"
 
-PG_VERSION=$(grep -oP '^ARG PG_MAJOR=\K.+' "$DD/image/base/Dockerfile")
-REDIS_VERSION=$(grep -oP '^REDIS_VERSION=\K.+' "$DD/image/base/install-redis")
-RUBY_VERSION=$(grep -oP '^ARG RUBY_VERSION=\K.+' "$DD/image/base/Dockerfile")
-BASE_IMAGE=$(grep '^image=' "$DD/launcher" 2>/dev/null | head -1 | tr -d '"' | cut -d= -f2)
+PG_VERSION=$(grep -oP '^ARG PG_MAJOR=\K.+' "$DD/image/base/Dockerfile" 2>/dev/null || true)
+REDIS_VERSION=$(grep -oP '^REDIS_VERSION=\K.+' "$DD/image/base/install-redis" 2>/dev/null || true)
+RUBY_VERSION=$(grep -oP '^ARG RUBY_VERSION=\K.+' "$DD/image/base/Dockerfile" 2>/dev/null || true)
+BASE_IMAGE=$(grep '^image=' "$DD/launcher" 2>/dev/null | head -1 | tr -d '"' | cut -d= -f2 || true)
 
 # Validate all values were extracted
 for var in PG_VERSION REDIS_VERSION RUBY_VERSION BASE_IMAGE; do

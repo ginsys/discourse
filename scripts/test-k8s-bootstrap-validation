@@ -5,6 +5,10 @@
 # 1. set -o pipefail is enabled
 # 2. Validation catches unsubstituted template variables
 # 3. Config path is correct
+# 4. Substituted config passes validation
+# 5. extract-upstream-versions.sh succeeds with correct output
+# 6. extract-upstream-versions.sh fails on missing source files
+# 7. k8s-bootstrap uses extractor, no hardcoded BASE_IMAGE fallback
 #
 # Does NOT run full build (see test-k8s-bootstrap for that)
 
@@ -77,6 +81,98 @@ echo "✓ Substituted config has no template variables"
 
 # Cleanup
 rm -f "$REPO_ROOT/discourse_docker/containers/${TEST_CONFIG}.yaml"
+
+# Test 5: Verify extract-upstream-versions.sh succeeds with correct output
+echo ""
+echo "5. Testing extract-upstream-versions.sh success..."
+
+EXTRACTOR_OUTPUT=$("$SCRIPT_DIR/extract-upstream-versions.sh")
+eval "$EXTRACTOR_OUTPUT"
+
+EXPECTED_KEYS="PG_VERSION REDIS_VERSION RUBY_VERSION BASE_IMAGE"
+for key in $EXPECTED_KEYS; do
+  if [ -z "${!key}" ]; then
+    echo "ERROR: $key is empty after eval of extractor output"
+    exit 1
+  fi
+  echo "  $key=${!key}"
+done
+echo "✓ Extractor outputs all expected variables with non-empty values"
+
+# Test 6: Verify extract-upstream-versions.sh fails on missing source files
+echo ""
+echo "6. Testing extract-upstream-versions.sh failure modes..."
+
+MOCK_DIR=$(mktemp -d)
+trap 'rm -rf "$MOCK_DIR"' EXIT
+
+# Test missing Dockerfile (PG_VERSION, RUBY_VERSION source)
+mkdir -p "$MOCK_DIR/image/base"
+echo 'image=discourse/base:test' > "$MOCK_DIR/launcher"
+echo 'REDIS_VERSION=7.0' > "$MOCK_DIR/image/base/install-redis"
+# No Dockerfile — should fail
+STDERR=$(DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" 2>&1 || true)
+EXIT_CODE=0
+DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" >/dev/null 2>&1 || EXIT_CODE=$?
+if [ "$EXIT_CODE" -eq 0 ]; then
+  echo "ERROR: Extractor should have failed with missing Dockerfile"
+  exit 1
+fi
+if ! echo "$STDERR" | grep -q "Failed to extract"; then
+  echo "ERROR: Expected 'Failed to extract' in error output, got: $STDERR"
+  exit 1
+fi
+echo "  ✓ Fails on missing Dockerfile"
+
+# Test missing launcher (BASE_IMAGE source)
+cp "$REPO_ROOT/discourse_docker/image/base/Dockerfile" "$MOCK_DIR/image/base/Dockerfile"
+rm -f "$MOCK_DIR/launcher"
+EXIT_CODE=0
+STDERR=$(DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" 2>&1 || true)
+DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" >/dev/null 2>&1 || EXIT_CODE=$?
+if [ "$EXIT_CODE" -eq 0 ]; then
+  echo "ERROR: Extractor should have failed with missing launcher"
+  exit 1
+fi
+if ! echo "$STDERR" | grep -q "Failed to extract"; then
+  echo "ERROR: Expected 'Failed to extract' in error output, got: $STDERR"
+  exit 1
+fi
+echo "  ✓ Fails on missing launcher"
+
+# Test missing install-redis (REDIS_VERSION source)
+echo 'image=discourse/base:test' > "$MOCK_DIR/launcher"
+rm -f "$MOCK_DIR/image/base/install-redis"
+EXIT_CODE=0
+STDERR=$(DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" 2>&1 || true)
+DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" >/dev/null 2>&1 || EXIT_CODE=$?
+if [ "$EXIT_CODE" -eq 0 ]; then
+  echo "ERROR: Extractor should have failed with missing install-redis"
+  exit 1
+fi
+if ! echo "$STDERR" | grep -q "Failed to extract"; then
+  echo "ERROR: Expected 'Failed to extract' in error output, got: $STDERR"
+  exit 1
+fi
+echo "  ✓ Fails on missing install-redis"
+echo "✓ Extractor correctly fails on missing source files"
+
+# Test 7: Verify k8s-bootstrap uses extractor, no hardcoded BASE_IMAGE fallback
+echo ""
+echo "7. Checking k8s-bootstrap uses extractor with no hardcoded fallback..."
+
+if ! grep -q 'extract-upstream-versions.sh' "$SCRIPT_DIR/k8s-bootstrap"; then
+  echo "ERROR: k8s-bootstrap does not reference extract-upstream-versions.sh"
+  exit 1
+fi
+
+# Ensure no hardcoded BASE_IMAGE default assignment (e.g. BASE_IMAGE="${BASE_IMAGE:-discourse/base:...}")
+if grep -qE 'BASE_IMAGE=.*discourse/base:' "$SCRIPT_DIR/k8s-bootstrap"; then
+  echo "ERROR: k8s-bootstrap contains hardcoded BASE_IMAGE fallback"
+  grep -n 'BASE_IMAGE=.*discourse/base:' "$SCRIPT_DIR/k8s-bootstrap"
+  exit 1
+fi
+echo "✓ k8s-bootstrap uses extractor with no hardcoded fallback"
 
 echo ""
 echo "=== All validation tests passed! ==="

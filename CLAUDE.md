@@ -107,7 +107,7 @@ Images also carry OCI labels (`org.discourse.postgresql-version`, `org.discourse
 
 All upstream-dependent values are extracted dynamically from the `discourse_docker` submodule rather than hardcoded:
 
-- **Base image**: `k8s-bootstrap` extracts from `discourse_docker/launcher` (`image=...` line), with env var override (`BASE_IMAGE`) and hardcoded fallback
+- **Base image**: `k8s-bootstrap` calls `extract-upstream-versions.sh` to get the base image from `discourse_docker/launcher`, with env var override (`BASE_IMAGE`). No hardcoded fallback — fails fast if extraction breaks.
 - **Dependency versions**: `extract-upstream-versions.sh` extracts PG, Redis, and Ruby versions using regex patterns against `discourse_docker/image/base/` files
 - **Known fragility**: The regex patterns (`ARG PG_MAJOR=\K.+`, etc.) could break if upstream changes their Dockerfile format. Validation errors are raised if extraction fails.
 
