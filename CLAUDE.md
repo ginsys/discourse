@@ -87,7 +87,8 @@ Plugins are defined in `config/plugins/*.yaml` as arrays of git clone commands. 
 - `config/plugins/*.yaml` - Plugin set definitions (git clone commands)
 - `scripts/k8s-bootstrap` - Core build script (validates pups, merges templates, runs build)
 - `scripts/build.sh` - Local build helper (merges config + plugins, calls k8s-bootstrap)
-- `scripts/generate-manifest.sh` - Creates `/version-manifest.yaml` embedded in images (includes dependency versions extracted from `discourse_docker/image/base/`)
+- `scripts/extract-upstream-versions.sh` - Shared helper that extracts PG, Redis, Ruby versions and base image from submodule (used by build.sh, generate-manifest.sh, and CI)
+- `scripts/generate-manifest.sh` - Creates `/version-manifest.yaml` embedded in images
 - `scripts/list-versions` - Query available Discourse stable versions
 - `scripts/test-k8s-bootstrap` - Full integration test (requires Docker)
 - `scripts/test-k8s-bootstrap-validation` - Quick validation test (no Docker)
@@ -98,13 +99,17 @@ Plugins are defined in `config/plugins/*.yaml` as arrays of git clone commands. 
 
 ### Version Manifest
 
-Each built image contains `/version-manifest.yaml` with Discourse version, plugin hash, dependency versions (PostgreSQL, Redis, Ruby), and build metadata. Dependency versions are extracted from the `discourse_docker` submodule at build time:
-
-- PostgreSQL: `discourse_docker/image/base/Dockerfile` → `ARG PG_MAJOR=15`
-- Redis: `discourse_docker/image/base/install-redis` → `REDIS_VERSION=7.4.7`
-- Ruby: `discourse_docker/image/base/Dockerfile` → `ARG RUBY_VERSION=3.3.8`
+Each built image contains `/version-manifest.yaml` with Discourse version, plugin hash, dependency versions (PostgreSQL, Redis, Ruby), and build metadata. Dependency versions are extracted dynamically from the `discourse_docker` submodule via `scripts/extract-upstream-versions.sh`.
 
 Images also carry OCI labels (`org.discourse.postgresql-version`, `org.discourse.redis-version`, `org.discourse.ruby-version`) queryable via `docker inspect` without running a container.
+
+### Upstream Dependency Tracking
+
+All upstream-dependent values are extracted dynamically from the `discourse_docker` submodule rather than hardcoded:
+
+- **Base image**: `k8s-bootstrap` extracts from `discourse_docker/launcher` (`image=...` line), with env var override (`BASE_IMAGE`) and hardcoded fallback
+- **Dependency versions**: `extract-upstream-versions.sh` extracts PG, Redis, and Ruby versions using regex patterns against `discourse_docker/image/base/` files
+- **Known fragility**: The regex patterns (`ARG PG_MAJOR=\K.+`, etc.) could break if upstream changes their Dockerfile format. Validation errors are raised if extraction fails.
 
 ## Build Prerequisites
 

@@ -143,9 +143,7 @@ jobs:
         if: steps.check.outputs.exists != 'true' || inputs.force == true
         run: |
           # Extract dependency versions for OCI labels
-          PG_VERSION=$(grep -oP '^ARG PG_MAJOR=\K.+' discourse_docker/image/base/Dockerfile)
-          REDIS_VERSION=$(grep -oP '^REDIS_VERSION=\K.+' discourse_docker/image/base/install-redis)
-          RUBY_VERSION=$(grep -oP '^ARG RUBY_VERSION=\K.+' discourse_docker/image/base/Dockerfile)
+          eval "$(./scripts/extract-upstream-versions.sh)"
 
           # Create Dockerfile to add manifest and labels
           cat > /tmp/Dockerfile.manifest << 'EOF'

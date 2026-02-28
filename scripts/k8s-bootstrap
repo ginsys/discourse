@@ -22,8 +22,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DD_DIR="$REPO_ROOT/discourse_docker"
 
-# Base image (matches launcher default)
-BASE_IMAGE="${BASE_IMAGE:-discourse/base:2.0.20260116-2039}"
+# Auto-detect base image from upstream (via shared helper, fails fast if extraction breaks)
+if [ -z "${BASE_IMAGE:-}" ]; then
+  eval "$("$SCRIPT_DIR/extract-upstream-versions.sh")"
+fi
 
 # Validate pups supports --skip-tags
 validate_pups() {
@@ -163,14 +165,18 @@ main() {
   echo "Command: $PUPS_CMD"
   echo ""
 
-  CONTAINER_ID=$(echo "$INPUT" | docker run -i \
+  CIDFILE=$(mktemp)
+  rm -f "$CIDFILE"  # docker needs the path to not exist
+
+  echo "$INPUT" | docker run -i \
     --shm-size=512m \
+    --cidfile "$CIDFILE" \
     "${ENV_ARGS[@]}" \
     "$BASE_IMAGE" \
-    /bin/bash -c "$PUPS_CMD" | tee /dev/stderr | tail -1)
+    /bin/bash -c "$PUPS_CMD" 2>&1 | tee /dev/stderr
 
-  # Get the actual container ID from docker ps
-  CONTAINER_ID=$(docker ps -lq)
+  CONTAINER_ID=$(cat "$CIDFILE")
+  rm -f "$CIDFILE"
 
   if [[ -z "$CONTAINER_ID" ]]; then
     echo ""

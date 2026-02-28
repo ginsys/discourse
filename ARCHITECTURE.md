@@ -562,7 +562,7 @@ plugins:
 dependencies:
   postgresql: "15"
   redis: "7.4.7"
-  ruby: "3.3.8"
+  ruby: "3.4.7"
 
 build:
   timestamp: "2026-01-28T10:30:00Z"
@@ -692,6 +692,32 @@ These variables control what happens when the container starts. Both default to 
 **Multi-replica deployments:** Leave at `0`. Use a Kubernetes Job (see `kubernetes/base/migration-job.yaml`) to run migrations and precompilation before rolling out new pods.
 
 See Section 9 for runtime environment variables.
+
+### 8.7 Upstream Dependency Tracking
+
+This project deliberately deviates from the upstream `discourse_docker/launcher` to support CI-based image builds without a running database. However, several values must stay in sync with upstream to avoid build failures.
+
+**Auto-extracted values:**
+
+| Value | Source | Extraction |
+|-------|--------|------------|
+| Base image tag | `discourse_docker/launcher` line 1 | `grep '^image='` in `k8s-bootstrap` |
+| PostgreSQL version | `discourse_docker/image/base/Dockerfile` | `ARG PG_MAJOR=` regex |
+| Redis version | `discourse_docker/image/base/install-redis` | `REDIS_VERSION=` regex |
+| Ruby version | `discourse_docker/image/base/Dockerfile` | `ARG RUBY_VERSION=` regex |
+
+All extractions are centralized in `scripts/extract-upstream-versions.sh`, which is sourced by `build.sh`, `generate-manifest.sh`, and the CI workflow. The base image extraction in `k8s-bootstrap` uses the same pattern with a three-tier fallback: `BASE_IMAGE` env override → extracted from launcher → hardcoded safety net.
+
+**Known risks:**
+- Regex patterns are fragile — if upstream changes from `ARG PG_MAJOR=15` to a different format, extraction silently fails (but validation catches empty values)
+- Template extraction via `sed` in `k8s-bootstrap` assumes the `templates:` block format is stable
+- The `_FILE_SEPERATOR_` delimiter is a pups convention (the typo is intentional upstream)
+
+**Intentionally NOT replicated from upstream launcher:**
+- Docker prerequisite checks (memory, disk, kernel) — CI runners are controlled environments
+- Env var passing via `docker run -e` — pups processes `env:` sections internally; runtime env comes from K8s pod spec
+- Volume/link/port extraction — not needed for image builds, K8s handles runtime concerns
+- SSH key copying — not applicable to CI builds
 
 ---
 
@@ -1523,7 +1549,7 @@ Not all Discourse plugins are compatible with Kubernetes multi-replica deploymen
 
 Contains:
 - Ubuntu base
-- Ruby 3.3
+- Ruby 3.4
 - PostgreSQL client libraries
 - Redis client
 - Nginx

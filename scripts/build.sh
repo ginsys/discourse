@@ -54,9 +54,7 @@ echo "Adding version manifest to image..."
 cd "$REPO_ROOT"
 
 # Extract dependency versions for OCI labels
-PG_VERSION=$(grep -oP '^ARG PG_MAJOR=\K.+' "$REPO_ROOT/discourse_docker/image/base/Dockerfile")
-REDIS_VERSION=$(grep -oP '^REDIS_VERSION=\K.+' "$REPO_ROOT/discourse_docker/image/base/install-redis")
-RUBY_VERSION=$(grep -oP '^ARG RUBY_VERSION=\K.+' "$REPO_ROOT/discourse_docker/image/base/Dockerfile")
+eval "$("$SCRIPT_DIR/extract-upstream-versions.sh")"
 
 cat > /tmp/Dockerfile.manifest << 'EOF'
 ARG BASE_IMAGE
