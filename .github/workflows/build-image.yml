@@ -56,7 +56,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "${{ inputs.discourse_version }}" ]; then
-            VERSION=$(gh api repos/discourse/discourse/tags --paginate --jq '
+            VERSION=$(gh api repos/discourse/discourse/tags --jq '
               [.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].name')
             if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
               echo "ERROR: Failed to detect latest Discourse version"

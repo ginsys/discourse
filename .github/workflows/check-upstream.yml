@@ -63,7 +63,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Get latest stable tag from Discourse repo (CalVer format: vYYYY.M.patch)
-          LATEST=$(gh api repos/discourse/discourse/tags --paginate --jq '
+          LATEST=$(gh api repos/discourse/discourse/tags --jq '
             [.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].name')
           if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
             echo "ERROR: Failed to detect latest Discourse version"
