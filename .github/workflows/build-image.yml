@@ -54,8 +54,12 @@ jobs:
         id: version
         run: |
           if [ -z "${{ inputs.discourse_version }}" ]; then
-            VERSION=$(curl -s https://api.github.com/repos/discourse/discourse/tags \
-              | jq -r '[.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].name')
+            VERSION=$(gh api repos/discourse/discourse/tags --paginate --jq '
+              [.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].name')
+            if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+              echo "ERROR: Failed to detect latest Discourse version"
+              exit 1
+            fi
             echo "Auto-detected latest stable: $VERSION"
           else
             VERSION="${{ inputs.discourse_version }}"

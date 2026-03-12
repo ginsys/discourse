@@ -6,11 +6,9 @@ COUNT="${1:-10}"
 
 echo "Available stable Discourse versions:"
 echo "====================================="
-curl -s https://api.github.com/repos/discourse/discourse/tags \
-  | jq -r --arg count "$COUNT" '
-    [.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))]
-    | .[:($count | tonumber)]
-    | .[].name'
+gh api repos/discourse/discourse/tags --paginate --jq \
+  '[.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))]
+   | .[].name' | head -n "$COUNT"
 
 echo ""
 echo "To build a specific version:"

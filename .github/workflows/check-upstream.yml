@@ -61,8 +61,12 @@ jobs:
         id: check
         run: |
           # Get latest stable tag from Discourse repo (CalVer format: vYYYY.M.patch)
-          LATEST=$(curl -s https://api.github.com/repos/discourse/discourse/tags \
-            | jq -r '[.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].name')
+          LATEST=$(gh api repos/discourse/discourse/tags --paginate --jq '
+            [.[] | select(.name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].name')
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "ERROR: Failed to detect latest Discourse version"
+            exit 1
+          fi
 
           # Get our last built version
           CURRENT=$(yq -r '.discourse // "none"' versions.yaml 2>/dev/null || echo "none")
