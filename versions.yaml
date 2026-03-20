@@ -1,5 +1,5 @@
 # Discourse K8s image build version tracking
-discourse: "v2026.2.0"
+discourse: "v2026.2.1"
 discourse_docker_commit: "a43dcf84b9f331292a834e03864b2e05a6db067c"
 plugins_hash: "16ad694db08f"
-built_at: "2026-03-12T08:47:16Z"
+built_at: "2026-03-20T06:43:35Z"
