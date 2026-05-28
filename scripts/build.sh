@@ -64,6 +64,8 @@ LABEL org.discourse.postgresql-version="${PG_VERSION}" \
       org.discourse.redis-version="${REDIS_VERSION}" \
       org.discourse.ruby-version="${RUBY_VERSION}"
 COPY version-manifest.yaml /version-manifest.yaml
+# Ensure the image boots Discourse (runit) at runtime, not the bootstrap pups command.
+CMD ["/sbin/boot"]
 EOF
 
 docker build \

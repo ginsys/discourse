@@ -194,7 +194,11 @@ main() {
   # Commit image
   echo ""
   echo "Committing image..."
+  # Reset CMD to the runtime boot command. docker commit otherwise preserves the
+  # bootstrap run command (/bin/bash -c "pups --stdin ..."), which would make the
+  # image run pups at container start instead of booting Discourse (runit).
   docker commit \
+    -c 'CMD ["/sbin/boot"]' \
     -c "LABEL org.opencontainers.image.created=\"$(TZ=UTC date -Iseconds)\"" \
     "$CONTAINER_ID" \
     "local_discourse/$CONFIG"
