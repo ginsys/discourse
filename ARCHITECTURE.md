@@ -67,7 +67,8 @@ This document defines the architecture for deploying Discourse forum platform on
 │  │                  │ │             │ │                     │               │
 │  │  • hstore ext    │ │  • Sidekiq  │ │  • Uploads          │               │
 │  │  • pg_trgm ext   │ │  • Cache    │ │  • Backups          │               │
-│  │                  │ │  • MessageBus│ │  • Avatars          │               │
+│  │  • unaccent ext  │ │             │ │                     │               │
+│  │  • vector ext *  │ │  • MessageBus│ │  • Avatars          │               │
 │  └──────────────────┘ └─────────────┘ └─────────────────────┘               │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -130,11 +131,66 @@ Templates explicitly excluded:
 |-------------|-------|
 | Minimum Version | 13 |
 | Recommended Version | 15+ |
-| Required Extensions | `hstore`, `pg_trgm`, `unaccent` |
-| Extension Scope | Must be installed in both `template1` AND the discourse database |
+| Required Extensions | `hstore`, `pg_trgm`, `unaccent`, `vector` (pgvector) |
+| Extension Scope | Must be installed in the discourse database |
 
-**CloudNativePG Cluster Configuration Notes:**
-- Enable `hstore`, `pg_trgm`, and `unaccent` extensions
+**Extensions and the superuser requirement (important):**
+
+Discourse's `db/structure.sql` runs `CREATE EXTENSION IF NOT EXISTS <name>` during
+the first migration (schema load). The behavior differs by extension:
+
+- `hstore`, `pg_trgm`, `unaccent` are **trusted** extensions — a non-superuser role
+  with `CREATE` on the database can install them.
+- `vector` (pgvector) is **NOT trusted** — it requires a **superuser** to create.
+
+CloudNativePG runs the application as a normal (non-superuser) role, so the migration
+fails with:
+
+```
+psql:.../db/structure.sql:NN: ERROR:  permission denied to create extension "vector"
+HINT:  Must be superuser to create this extension.
+```
+
+Because `structure.sql` is not idempotent (it does `CREATE SCHEMA discourse_functions`
+without `IF NOT EXISTS`), a failed load leaves a partial `discourse_functions` schema,
+and every retry then fails earlier with `schema "discourse_functions" already exists`,
+masking the real cause. If you hit that state, the real error is the extension
+permission failure — fix the extension, then `DROP SCHEMA discourse_functions CASCADE`
+and let the migration re-run.
+
+**The fix — pre-create extensions as superuser (CNPG-native):**
+
+The `vector` extension files ship in the standard CNPG `postgresql` images
+(`pg_available_extensions` lists `vector`), so no custom image is needed — the
+extension just has to be *created* by a superuser before/instead of the app role.
+
+Manage extensions declaratively with a CloudNativePG `Database` resource, which the
+operator reconciles as superuser (works for non-trusted extensions, and adopts a
+database already created by `initdb`):
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: discourse-db
+spec:
+  name: discourse
+  owner: discourse
+  cluster:
+    name: discourse
+  databaseReclaimPolicy: retain
+  extensions:
+    - { name: hstore,   ensure: present }
+    - { name: pg_trgm,  ensure: present }
+    - { name: unaccent, ensure: present }
+    - { name: vector,   ensure: present }   # non-trusted: must be created by superuser
+```
+
+Requires CloudNativePG ≥ 1.26 (the `Database` CR `extensions` field). For older
+operators, use `bootstrap.initdb.postInitApplicationSQL` (runs as superuser, but only
+once at bootstrap — not reconciled).
+
+**Other CloudNativePG Cluster Configuration Notes:**
 - Configure appropriate connection pooling
 - Set up automated backups
 
