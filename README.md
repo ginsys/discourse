@@ -248,8 +248,10 @@ Migrations and precompilation run on boot. No separate Job needed.
 # 1. Delete previous migration Job (Jobs are immutable — can't update image)
 kubectl delete job discourse-migrate -n discourse --ignore-not-found
 
-# 2. Run migrations as a Job (update image tag in migration-job.yaml first)
-kubectl apply -f kubernetes/overlays/production/migration-job.yaml
+# 2. Run migrations/precompile as a Job. Render it from the overlay so it carries the
+#    S3-credential/env patches — applying the raw migration-job.yaml would miss them.
+#    (Update the image tag in the overlay first.)
+kubectl kustomize kubernetes/overlays/production/ | yq 'select(.kind == "Job")' | kubectl apply -f -
 kubectl wait --for=condition=complete job/discourse-migrate -n discourse --timeout=600s
 
 # 3. Then deploy/update the application

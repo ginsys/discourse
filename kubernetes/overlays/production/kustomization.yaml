@@ -8,13 +8,16 @@ kind: Kustomization
 # safe with multiple replicas. Sidekiq is embedded per replica (UNICORN_SIDEKIQS from base;
 # mini_scheduler de-dupes scheduled jobs via a Redis lock).
 
+# The web Deployment and migration Job reference a `discourse-secrets` Secret with keys
+# db-password, smtp-password, s3-access-key-id, s3-secret-access-key. Provide it out-of-band
+# (SOPS / external secret store) — see secret.example.yaml for the shape. It is intentionally
+# NOT a resource here so `kubectl apply -k` can't overwrite real creds with placeholders.
 resources:
   - ../../base
   - migration-job.yaml              # multi-replica: migrate/precompile via Job, not boot flags
   - hpa.yaml
   - pdb.yaml
   - ingress.yaml
-  - secret.yaml                     # PLACEHOLDER — replace before deploy
 
 patches:
   - path: patches/deployment.yaml         # replicas 3 + resources + S3 credential env (web)
