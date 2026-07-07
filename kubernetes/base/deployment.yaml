@@ -49,8 +49,11 @@ spec:
           volumeMounts:
             - name: shared
               mountPath: /shared
-            - name: tmp
-              mountPath: /var/www/discourse/tmp
+            # NOTE: do NOT mount a separate volume at /var/www/discourse/tmp.
+            # Discourse's atomic_ln_s (lib/discourse.rb) creates a temp symlink in
+            # Rails.root/tmp and File.rename()s it into public/ (e.g. the emoji gem's
+            # public/images/emoji). rename() cannot cross filesystems, so a separate
+            # tmp mount makes boot fail with Errno::EXDEV. Keep tmp on the rootfs.
           startupProbe:
             httpGet:
               path: /srv/status
@@ -93,6 +96,4 @@ spec:
                     sleep 10
       volumes:
         - name: shared
-          emptyDir: {}
-        - name: tmp
           emptyDir: {}
