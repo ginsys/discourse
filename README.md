@@ -249,7 +249,7 @@ Migrations and precompilation run on boot. No separate Job needed.
 kubectl delete job discourse-migrate -n discourse --ignore-not-found
 
 # 2. Run migrations as a Job (update image tag in migration-job.yaml first)
-kubectl apply -f kubernetes/base/migration-job.yaml
+kubectl apply -f kubernetes/overlays/production/migration-job.yaml
 kubectl wait --for=condition=complete job/discourse-migrate -n discourse --timeout=600s
 
 # 3. Then deploy/update the application

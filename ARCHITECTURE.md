@@ -520,7 +520,7 @@ In Kubernetes deployments, the separation between build-time and runtime is crit
 
 **Required Approach for Multi-Replica: Kubernetes Job**
 
-Migrations must run as a separate Kubernetes Job before deploying new pods. See `kubernetes/base/migration-job.yaml` for the production-ready manifest.
+Migrations must run as a separate Kubernetes Job before deploying new pods. See `kubernetes/overlays/production/migration-job.yaml` for the production-ready manifest.
 
 ```yaml
 apiVersion: batch/v1
@@ -753,7 +753,7 @@ These variables control what happens when the container starts. Both default to 
 
 **Single-pod deployments:** Set both to `1`. Migrations and precompilation run on boot.
 
-**Multi-replica deployments:** Leave at `0`. Use a Kubernetes Job (see `kubernetes/base/migration-job.yaml`) to run migrations and precompilation before rolling out new pods.
+**Multi-replica deployments:** Leave at `0`. Use a Kubernetes Job (see `kubernetes/overlays/production/migration-job.yaml`) to run migrations and precompilation before rolling out new pods.
 
 See Section 9 for runtime environment variables.
 

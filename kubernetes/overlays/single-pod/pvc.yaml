@@ -1,0 +1,16 @@
+# RWO PersistentVolumeClaim for /shared (uploads, backups, logs, tmp) in the single-pod
+# deploy. ReadWriteOnce attaches to one node at a time, which is why this shape is
+# single-replica only. For multi-replica, use the production overlay (emptyDir /shared
+# + S3 for uploads/backups).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: discourse-shared
+  namespace: discourse
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # storageClassName: <your-RWO-class>   # e.g. cochir-iscsi; omit for the cluster default
+  resources:
+    requests:
+      storage: 10Gi
