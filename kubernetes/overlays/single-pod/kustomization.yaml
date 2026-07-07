@@ -1,12 +1,28 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Single-pod overlay: migrations and precompilation run on boot.
-# The migration Job from base is still included but is optional -
-# you can skip applying it since MIGRATE_ON_BOOT=1 handles migrations.
+# Single-pod overlay: one replica; migrations + asset precompile run on boot via
+# MIGRATE_ON_BOOT/PRECOMPILE_ON_BOOT. /shared is a ReadWriteOnce PVC (attaches to one
+# node), so this shape is single-replica only. base does NOT include the migration Job,
+# so migrate/precompile never runs twice. For multi-replica use the production overlay
+# (emptyDir /shared + S3 uploads/backups + the migration Job).
 
 resources:
   - ../../base
+  - pvc.yaml
 
 patches:
+  # replicas + on-boot migrate/precompile flags
   - path: patches/deployment.yaml
+  # swap base's emptyDir /shared for the RWO PVC (strategic-merge can't replace a volume
+  # source in place, so use a JSON6902 replace; base has exactly one volume, `shared`)
+  - target:
+      kind: Deployment
+      name: discourse-web
+    patch: |
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: shared
+          persistentVolumeClaim:
+            claimName: discourse-shared

@@ -1,14 +1,22 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Production overlay: multi-replica with HPA, PDB, and Ingress.
-# Use the migration Job to run DB migrations before rolling out new versions.
+# Production overlay: multi-replica (HPA/PDB/Ingress with sticky sessions).
+# /shared stays emptyDir (per-pod) — uploads/backups go to S3 (global-S3 mode), logs to
+# stdout — so there is no ReadWriteOnce blocker and pods can spread across nodes.
+# Migrations + asset precompile run via the migration Job (NOT MIGRATE_ON_BOOT), which is
+# safe with multiple replicas. Sidekiq is embedded per replica (UNICORN_SIDEKIQS from base;
+# mini_scheduler de-dupes scheduled jobs via a Redis lock).
 
 resources:
   - ../../base
+  - migration-job.yaml              # multi-replica: migrate/precompile via Job, not boot flags
   - hpa.yaml
   - pdb.yaml
   - ingress.yaml
+  - secret.yaml                     # PLACEHOLDER — replace before deploy
 
 patches:
-  - path: patches/deployment.yaml
+  - path: patches/deployment.yaml         # replicas 3 + resources + S3 credential env (web)
+  - path: patches/configmap-s3.yaml       # S3 global env: bucket/region/endpoint
+  - path: patches/migration-job-s3.yaml   # S3 credential env on the migration Job

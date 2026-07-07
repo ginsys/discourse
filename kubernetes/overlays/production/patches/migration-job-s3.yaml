@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: discourse-migrate
+  namespace: discourse
+spec:
+  template:
+    spec:
+      containers:
+        # The Job runs `rake assets:precompile`, which touches S3 when global-S3 is on.
+        # It does NOT run /sbin/boot, so copy-env never writes discourse.conf; GlobalSetting
+        # falls back to EnvProvider (reads DISCOURSE_* env directly), which requires the
+        # image ship no baked discourse.conf. bucket/region/endpoint arrive via the Job's
+        # existing envFrom: discourse-env; inject the S3 credentials here to match the web pod.
+        - name: migrate
+          env:
+            - name: DISCOURSE_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: discourse-secrets
+                  key: s3-access-key-id
+            - name: DISCOURSE_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: discourse-secrets
+                  key: s3-secret-access-key

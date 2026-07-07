@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: discourse-env
+  namespace: discourse
+data:
+  # Global-S3 mode for uploads. Setting GlobalSetting.s3_bucket (via DISCOURSE_S3_BUCKET)
+  # makes Discourse serve ALL public uploads from S3; enable_s3_uploads / s3_upload_bucket
+  # / s3_region SiteSettings are then forced from these globals and hidden in the UI.
+  # Only GlobalSetting names are env-settable (copy-env -> discourse.conf); SiteSetting
+  # names (enable_s3_uploads, s3_use_acls, backup_location, s3_backup_bucket) are NOT.
+  # Region must match the store's SigV4 region — Garage uses "garage", not "us-east-1".
+  DISCOURSE_S3_BUCKET: "discourse-uploads"
+  DISCOURSE_S3_REGION: "garage"
+  DISCOURSE_S3_ENDPOINT: "https://s3.kube.ginsys.net"
+  # Backups + s3_use_acls are SiteSettings (not env-settable). With /shared on emptyDir,
+  # local backups are ephemeral, so seed these ONCE (admin UI or rails runner):
+  #   SiteSetting.backup_location   = 's3'
+  #   SiteSetting.s3_backup_bucket  = 'discourse-backups'
+  #   SiteSetting.s3_use_acls       = false   # Garage/S3-compatible stores

@@ -3,9 +3,12 @@ kind: Kustomization
 
 namespace: discourse
 
+# NOTE: migration-job.yaml is intentionally NOT in base. Migrations/precompile are
+# handled per deploy shape: the single-pod overlay uses MIGRATE_ON_BOOT/PRECOMPILE_ON_BOOT
+# (boot flags), while the production (multi-replica) overlay includes migration-job.yaml.
+# Having the Job in base plus boot flags in single-pod would run migrate/precompile twice.
 resources:
   - namespace.yaml
   - configmap.yaml
   - deployment.yaml
   - service.yaml
-  - migration-job.yaml

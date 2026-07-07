@@ -23,6 +23,15 @@ data:
   DISCOURSE_SMTP_PORT: "587"
   DISCOURSE_SMTP_USER_NAME: "postmaster@example.com"
 
+  # Web workers (Pitchfork) per pod
+  UNICORN_WORKERS: "2"
+  # Embedded Sidekiq daemons per pod. config/pitchfork.conf.rb spawns Sidekiq only
+  # when ENV["UNICORN_SIDEKIQS"].to_i > 0; without it no background jobs run.
+  UNICORN_SIDEKIQS: "1"
+  # Send Rails logs to container stdout (config/environments/production.rb) instead of
+  # /shared/log/rails/*.log, for kubectl logs / log aggregation.
+  RAILS_LOG_TO_STDOUT: "1"
+
   # Boot behavior - disabled by default for multi-replica safety
   # Enable in single-pod overlay or use migration Job instead
   MIGRATE_ON_BOOT: "0"
