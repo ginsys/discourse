@@ -163,10 +163,28 @@ main() {
     echo "Skipping tags: $SKIP_TAGS"
   fi
 
+  # Bake the ember JS bundle into the image when the precompile tag is skipped.
+  #
+  # `--skip-tags precompile` skips DB-dependent asset work, but it also skips the
+  # ember-cli build (vendor.js + the app bundles), which is NOT DB-dependent:
+  # `assets:precompile:build` runs script/assemble_ember_build.rb, which downloads the
+  # prebuilt bundle from get.discourse.org (no DB, no Redis). If we don't bake it here,
+  # the image ships zero ember JS and every deployed site 500s on the app layout, because
+  # the runtime on-boot precompile in /etc/service/unicorn/run hardcodes
+  # SKIP_EMBER_CLI_COMPILE=1 and only digests an already-built bundle.
+  #
+  # SKIP_EMBER_CLI_COMPILE=0 forces the ember build (the container env sets it to 1).
+  # This step has no `=> environment` dependency, so it must run without a DB — CI (which
+  # has no DB) is the guardrail that keeps it that way.
+  ASSET_BAKE_CMD=""
+  if [[ ",$SKIP_TAGS," == *",precompile,"* ]]; then
+    ASSET_BAKE_CMD=" && echo '=== Baking ember build (precompile tag was skipped) ===' && su discourse -c 'cd /var/www/discourse && SKIP_EMBER_CLI_COMPILE=0 EMBER_ENV=production bundle exec rake assets:precompile:build'"
+  fi
+
   # Run bootstrap
   echo ""
   echo "Running bootstrap with pups..."
-  echo "Command: $PUPS_CMD"
+  echo "Command: $PUPS_CMD$ASSET_BAKE_CMD"
   echo ""
 
   CIDFILE=$(mktemp)
@@ -177,7 +195,7 @@ main() {
     --cidfile "$CIDFILE" \
     "${ENV_ARGS[@]}" \
     "$BASE_IMAGE" \
-    /bin/bash -c "$PUPS_CMD" 2>&1 | tee /dev/stderr
+    /bin/bash -c "$PUPS_CMD$ASSET_BAKE_CMD" 2>&1 | tee /dev/stderr
 
   CONTAINER_ID=$(cat "$CIDFILE")
   rm -f "$CIDFILE"

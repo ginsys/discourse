@@ -484,11 +484,19 @@ In Kubernetes deployments, the separation between build-time and runtime is crit
 - Ruby gems (`bundle install`)
 - Nginx configuration
 - Base system packages
-- Ember CLI compilation (`SKIP_EMBER_CLI_COMPILE=1` prevents re-running at boot)
+
+**Also baked at Build Time** (explicit step in `scripts/k8s-bootstrap`, NOT via pups):
+- Ember JS bundle (`rake assets:precompile:build` → `script/assemble_ember_build.rb`, which
+  downloads the prebuilt bundle from get.discourse.org — DB-less). The `precompile` pups tag is
+  skipped and it bundles the ember-cli build, so this must run separately or the image ships no
+  `vendor.js` and every deployed site 500s on the app layout. At runtime,
+  `SKIP_EMBER_CLI_COMPILE=1` then makes the on-boot precompile digest this baked bundle instead
+  of rebuilding it.
 
 **Handled at Deploy Time** (via Job or on-boot env vars):
 - Database migrations (`rake db:migrate`)
-- Asset precompilation (`rake assets:precompile`)
+- Asset precompilation digest (`rake assets:precompile` with `SKIP_EMBER_CLI_COMPILE=1` —
+  DB-dependent theme/plugin CSS + propshaft digest of the baked bundle)
 
 **Configured at Runtime:**
 - Database connection parameters
