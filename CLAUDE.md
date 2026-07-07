@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Automated build system for creating Discourse Docker images optimized for Kubernetes deployment. Tracks upstream `discourse/discourse_docker` via git submodule (no fork), builds images that don't require DB/Redis at build time, and automates builds when new upstream versions are released.
 
+> Cross-repo setup + deploy notes and gotchas (this build repo + `ginsys/opsmaster` Flux deploy):
+> Serge's local doc `~/etc/docs/development/discourse.md`. Known latent bug: images built
+> `--skip-tags precompile` ship no ember bundle, but `config/basecontainer.yaml` claims "Ember
+> already compiled during build" and `kubernetes/base/migration-job.yaml` inherits
+> `SKIP_EMBER_CLI_COMPILE=1` — so deployed sites 500 on the app layout until assets are built at
+> deploy time. Fix: bake the (DB-less) ember bundle at image build.
+
 ## Key Commands
 
 ### Testing
