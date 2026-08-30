@@ -20,11 +20,12 @@ CONFIG="${1:-basecontainer}"
 SKIP_TAGS="${2:-${PUPS_SKIP_TAGS:-migrate,precompile}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DD_DIR="$REPO_ROOT/discourse_docker"
+DD_DIR="${DD_DIR:-$REPO_ROOT/discourse_docker}"
 
 # Auto-detect base image from upstream (via shared helper, fails fast if extraction breaks)
 if [ -z "${BASE_IMAGE:-}" ]; then
-  eval "$("$SCRIPT_DIR/extract-upstream-versions.sh")"
+  UPSTREAM_VARS=$("$SCRIPT_DIR/extract-upstream-versions.sh")
+  eval "$UPSTREAM_VARS"
 fi
 
 # Validate pups supports --skip-tags

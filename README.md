@@ -195,7 +195,7 @@ plugins:
 
 dependencies:
   postgresql: "15"
-  redis: "7.4.7"
+  redis: "debian-trixie"
   ruby: "3.3.8"
 
 build:
@@ -218,6 +218,10 @@ docker inspect --format '{{index .Config.Labels "org.discourse.postgresql-versio
 docker inspect --format '{{index .Config.Labels "org.discourse.redis-version"}}' <image>
 docker inspect --format '{{index .Config.Labels "org.discourse.ruby-version"}}' <image>
 ```
+
+`org.discourse.redis-version` (and the manifest's `dependencies.redis`) reads `debian-<release>`
+(e.g. `debian-trixie`), not a semver: upstream dropped its pinned Redis build in favor of the
+Debian package (discourse/discourse_docker#1108), so there is no upstream Redis version to extract.
 
 ## Kubernetes Deployment
 

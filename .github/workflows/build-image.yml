@@ -149,7 +149,8 @@ jobs:
         if: steps.check.outputs.exists != 'true' || inputs.force == true
         run: |
           # Extract dependency versions for OCI labels
-          eval "$(./scripts/extract-upstream-versions.sh)"
+          UPSTREAM_VARS=$(./scripts/extract-upstream-versions.sh)
+          eval "$UPSTREAM_VARS"
 
           # Create Dockerfile to add manifest and labels
           cat > /tmp/Dockerfile.manifest << 'EOF'

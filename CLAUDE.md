@@ -115,8 +115,8 @@ Images also carry OCI labels (`org.discourse.postgresql-version`, `org.discourse
 All upstream-dependent values are extracted dynamically from the `discourse_docker` submodule rather than hardcoded:
 
 - **Base image**: `k8s-bootstrap` calls `extract-upstream-versions.sh` to get the base image from `discourse_docker/launcher`, with env var override (`BASE_IMAGE`). No hardcoded fallback — fails fast if extraction breaks.
-- **Dependency versions**: `extract-upstream-versions.sh` extracts PG, Redis, and Ruby versions using regex patterns against `discourse_docker/image/base/` files
-- **Known fragility**: The regex patterns (`ARG PG_MAJOR=\K.+`, etc.) could break if upstream changes their Dockerfile format. Validation errors are raised if extraction fails.
+- **Dependency versions**: `extract-upstream-versions.sh` extracts PG and Ruby versions using regex patterns against `discourse_docker/image/base/Dockerfile`. Redis has no pinned upstream version since discourse/discourse_docker#1108 (2026-08-11) replaced the custom Redis build with the Debian package — `REDIS_VERSION` is instead `debian-<release>` (from `ARG DEBIAN_RELEASE=`), a channel, not a semver.
+- **Known fragility**: The regex patterns (`ARG PG_MAJOR=\K.+`, etc.) could break if upstream changes their Dockerfile format. Validation errors are raised if extraction fails, and every call site treats that as fatal (`VAR=$(cmd); eval "$VAR"`, not `eval "$(cmd)"` — the latter silently discards a non-zero exit under `set -e`).
 
 ## Build Prerequisites
 

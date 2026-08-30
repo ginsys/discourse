@@ -625,7 +625,7 @@ plugins:
 
 dependencies:
   postgresql: "15"
-  redis: "7.4.7"
+  redis: "debian-trixie"
   ruby: "3.4.7"
 
 build:
@@ -635,7 +635,7 @@ build:
   commit: "abc123..."
 ```
 
-Dependency versions are extracted from the `discourse_docker` submodule at build time. Images also carry OCI labels (`org.discourse.postgresql-version`, `org.discourse.redis-version`, `org.discourse.ruby-version`) queryable via `docker inspect`.
+Dependency versions are extracted from the `discourse_docker` submodule at build time. Images also carry OCI labels (`org.discourse.postgresql-version`, `org.discourse.redis-version`, `org.discourse.ruby-version`) queryable via `docker inspect`. `redis` is `debian-<release>` (e.g. `debian-trixie`) rather than a semver: upstream dropped its pinned Redis build in favor of the Debian package (discourse/discourse_docker#1108), so there is no upstream version to extract.
 
 ### 8.4 CI/CD Build Guardrails
 
@@ -767,7 +767,7 @@ This project deliberately deviates from the upstream `discourse_docker/launcher`
 |-------|--------|------------|
 | Base image tag | `discourse_docker/launcher` line 1 | `grep '^image='` in `extract-upstream-versions.sh` |
 | PostgreSQL version | `discourse_docker/image/base/Dockerfile` | `ARG PG_MAJOR=` regex |
-| Redis version | `discourse_docker/image/base/install-redis` | `REDIS_VERSION=` regex |
+| Redis provenance | `discourse_docker/image/base/Dockerfile` | `ARG DEBIAN_RELEASE=` regex — Redis is the Debian package, not an upstream-pinned build, so this is a channel (`debian-trixie`), not a version |
 | Ruby version | `discourse_docker/image/base/Dockerfile` | `ARG RUBY_VERSION=` regex |
 
 All extractions are centralized in `scripts/extract-upstream-versions.sh`, which is called by `k8s-bootstrap`, `build.sh`, `generate-manifest.sh`, and the CI workflow. `k8s-bootstrap` calls the shared helper unless `BASE_IMAGE` is already set via env override. No hardcoded fallback — extraction failure is fatal.

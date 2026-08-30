@@ -15,7 +15,8 @@ if [ -z "$DISCOURSE_VERSION" ] || [ -z "$PLUGINS_HASH" ]; then
 fi
 
 # Extract dependency versions from discourse_docker submodule
-eval "$("$SCRIPT_DIR/extract-upstream-versions.sh")"
+UPSTREAM_VARS=$("$SCRIPT_DIR/extract-upstream-versions.sh")
+eval "$UPSTREAM_VARS"
 
 cat << EOF
 discourse:
