@@ -9,6 +9,7 @@
 # 5. extract-upstream-versions.sh succeeds with correct output
 # 6. extract-upstream-versions.sh fails on missing source files
 # 7. k8s-bootstrap uses extractor, no hardcoded BASE_IMAGE fallback
+# 8. k8s-bootstrap aborts before invoking Docker when extraction fails
 #
 # Does NOT run full build (see test-k8s-bootstrap for that)
 
@@ -89,7 +90,7 @@ echo "5. Testing extract-upstream-versions.sh success..."
 EXTRACTOR_OUTPUT=$("$SCRIPT_DIR/extract-upstream-versions.sh")
 eval "$EXTRACTOR_OUTPUT"
 
-EXPECTED_KEYS="PG_VERSION REDIS_VERSION RUBY_VERSION BASE_IMAGE"
+EXPECTED_KEYS="PG_VERSION REDIS_VERSION RUBY_VERSION BASE_IMAGE DEBIAN_RELEASE"
 for key in $EXPECTED_KEYS; do
   if [ -z "${!key}" ]; then
     echo "ERROR: $key is empty after eval of extractor output"
@@ -106,10 +107,9 @@ echo "6. Testing extract-upstream-versions.sh failure modes..."
 MOCK_DIR=$(mktemp -d)
 trap 'rm -rf "$MOCK_DIR"' EXIT
 
-# Test missing Dockerfile (PG_VERSION, RUBY_VERSION source)
+# Test missing Dockerfile (PG_VERSION, RUBY_VERSION, DEBIAN_RELEASE source)
 mkdir -p "$MOCK_DIR/image/base"
 echo 'image=discourse/base:test' > "$MOCK_DIR/launcher"
-echo 'REDIS_VERSION=7.0' > "$MOCK_DIR/image/base/install-redis"
 # No Dockerfile — should fail
 STDERR=$(DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" 2>&1 || true)
 EXIT_CODE=0
@@ -140,21 +140,22 @@ if ! echo "$STDERR" | grep -q "Failed to extract"; then
 fi
 echo "  ✓ Fails on missing launcher"
 
-# Test missing install-redis (REDIS_VERSION source)
+# Test missing DEBIAN_RELEASE (Dockerfile present but without that ARG)
 echo 'image=discourse/base:test' > "$MOCK_DIR/launcher"
-rm -f "$MOCK_DIR/image/base/install-redis"
+grep -v '^ARG DEBIAN_RELEASE=' "$REPO_ROOT/discourse_docker/image/base/Dockerfile" \
+  > "$MOCK_DIR/image/base/Dockerfile"
 EXIT_CODE=0
 STDERR=$(DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" 2>&1 || true)
 DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" >/dev/null 2>&1 || EXIT_CODE=$?
 if [ "$EXIT_CODE" -eq 0 ]; then
-  echo "ERROR: Extractor should have failed with missing install-redis"
+  echo "ERROR: Extractor should have failed with missing DEBIAN_RELEASE"
   exit 1
 fi
 if ! echo "$STDERR" | grep -q "Failed to extract"; then
   echo "ERROR: Expected 'Failed to extract' in error output, got: $STDERR"
   exit 1
 fi
-echo "  ✓ Fails on missing install-redis"
+echo "  ✓ Fails on missing DEBIAN_RELEASE"
 echo "✓ Extractor correctly fails on missing source files"
 
 # Test 7: Verify k8s-bootstrap uses extractor, no hardcoded BASE_IMAGE fallback
@@ -173,6 +174,48 @@ if grep -qE 'BASE_IMAGE=.*discourse/base:' "$SCRIPT_DIR/k8s-bootstrap"; then
   exit 1
 fi
 echo "✓ k8s-bootstrap uses extractor with no hardcoded fallback"
+
+# Test 8: Verify k8s-bootstrap aborts before invoking Docker when extraction fails
+echo ""
+echo "8. Testing k8s-bootstrap aborts before Docker when extraction fails..."
+
+ABORT_MOCK_DIR=$(mktemp -d)
+STUB_DIR=$(mktemp -d)
+DOCKER_MARKER="$STUB_DIR/docker-was-called"
+trap 'rm -rf "$MOCK_DIR" "$ABORT_MOCK_DIR" "$STUB_DIR"' EXIT
+
+# discourse_docker mock: no Dockerfile, no launcher -> extraction fails. Must also carry a
+# valid, substituted containers/basecontainer.yaml -- k8s-bootstrap's own CONFIG_FILE-exists
+# check (main(), ahead of validate_pups()) would otherwise abort the script first and this
+# test would pass for the wrong reason, without ever exercising the extraction-failure path.
+mkdir -p "$ABORT_MOCK_DIR/image/base" "$ABORT_MOCK_DIR/containers"
+sed "s|{{ DISCOURSE_VERSION }}|${TEST_VERSION}|g" \
+  "$REPO_ROOT/config/basecontainer.yaml" \
+  > "$ABORT_MOCK_DIR/containers/basecontainer.yaml"
+
+# Docker stub: records every invocation instead of running it. Absence of its marker file
+# is the actual proof k8s-bootstrap never reached Docker -- grepping the error text is not
+# enough, since more than one failure mode in that script prints an "invalid reference" style
+# message.
+cat > "$STUB_DIR/docker" << EOF
+#!/bin/bash
+echo "docker called: \$*" >> "$DOCKER_MARKER"
+exit 0
+EOF
+chmod +x "$STUB_DIR/docker"
+
+EXIT_CODE=0
+DD_DIR="$ABORT_MOCK_DIR" PATH="$STUB_DIR:$PATH" "$SCRIPT_DIR/k8s-bootstrap" basecontainer >/dev/null 2>&1 || EXIT_CODE=$?
+if [ "$EXIT_CODE" -eq 0 ]; then
+  echo "ERROR: k8s-bootstrap should have aborted when extraction fails"
+  exit 1
+fi
+if [ -f "$DOCKER_MARKER" ]; then
+  echo "ERROR: k8s-bootstrap invoked docker despite extraction failure"
+  cat "$DOCKER_MARKER"
+  exit 1
+fi
+echo "✓ k8s-bootstrap aborts before invoking Docker when extraction fails"
 
 echo ""
 echo "=== All validation tests passed! ==="

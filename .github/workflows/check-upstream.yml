@@ -33,12 +33,22 @@ jobs:
             echo "has_updates=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update submodule and push
+      - name: Update submodule pin
         if: steps.check.outputs.has_updates == 'true'
         run: |
           cd discourse_docker
           git checkout ${{ steps.check.outputs.latest }}
-          cd ..
+
+      # Validate the new pin BEFORE it reaches main: a plain push here uses the default
+      # github.token and does not trigger test.yml, so this is the only gate an upstream
+      # layout change (e.g. a moved/removed dependency-version source file) gets.
+      - name: Validate new submodule pin
+        if: steps.check.outputs.has_updates == 'true'
+        run: ./scripts/test-k8s-bootstrap-validation
+
+      - name: Commit and push submodule update
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
           git add discourse_docker
 
           git config user.name "github-actions[bot]"

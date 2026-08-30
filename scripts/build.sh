@@ -54,7 +54,8 @@ echo "Adding version manifest to image..."
 cd "$REPO_ROOT"
 
 # Extract dependency versions for OCI labels
-eval "$("$SCRIPT_DIR/extract-upstream-versions.sh")"
+UPSTREAM_VARS=$("$SCRIPT_DIR/extract-upstream-versions.sh")
+eval "$UPSTREAM_VARS"
 
 cat > /tmp/Dockerfile.manifest << 'EOF'
 ARG BASE_IMAGE
