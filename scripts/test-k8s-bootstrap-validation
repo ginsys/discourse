@@ -7,7 +7,7 @@
 # 3. Config path is correct
 # 4. Substituted config passes validation
 # 5. extract-upstream-versions.sh succeeds with correct output
-# 6. extract-upstream-versions.sh fails on missing source files
+# 6. extract-upstream-versions.sh fails on missing source files and non-literal values
 # 7. k8s-bootstrap uses extractor, no hardcoded BASE_IMAGE fallback
 # 8. k8s-bootstrap aborts before invoking Docker when extraction fails
 #
@@ -108,8 +108,8 @@ MOCK_DIR=$(mktemp -d)
 trap 'rm -rf "$MOCK_DIR"' EXIT
 
 # Test missing Dockerfile (PG_VERSION, RUBY_VERSION, DEBIAN_RELEASE source)
-mkdir -p "$MOCK_DIR/image/base"
-echo 'image=discourse/base:test' > "$MOCK_DIR/launcher"
+mkdir -p "$MOCK_DIR/image/base" "$MOCK_DIR/templates"
+echo 'base_image: discourse/base:test' > "$MOCK_DIR/templates/web.template.yml"
 # No Dockerfile — should fail
 STDERR=$(DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" 2>&1 || true)
 EXIT_CODE=0
@@ -124,24 +124,42 @@ if ! echo "$STDERR" | grep -q "Failed to extract"; then
 fi
 echo "  ✓ Fails on missing Dockerfile"
 
-# Test missing launcher (BASE_IMAGE source)
+# Test missing web.template.yml (BASE_IMAGE source)
 cp "$REPO_ROOT/discourse_docker/image/base/Dockerfile" "$MOCK_DIR/image/base/Dockerfile"
-rm -f "$MOCK_DIR/launcher"
+rm -f "$MOCK_DIR/templates/web.template.yml"
 EXIT_CODE=0
 STDERR=$(DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" 2>&1 || true)
 DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" >/dev/null 2>&1 || EXIT_CODE=$?
 if [ "$EXIT_CODE" -eq 0 ]; then
-  echo "ERROR: Extractor should have failed with missing launcher"
+  echo "ERROR: Extractor should have failed with missing web.template.yml"
   exit 1
 fi
 if ! echo "$STDERR" | grep -q "Failed to extract"; then
   echo "ERROR: Expected 'Failed to extract' in error output, got: $STDERR"
   exit 1
 fi
-echo "  ✓ Fails on missing launcher"
+echo "  ✓ Fails on missing web.template.yml"
+
+# Test a base_image that is not a plain image reference. This is the shape the upstream
+# launcher's image= line took in discourse/discourse_docker#1152; callers eval the output,
+# so the extractor must refuse it rather than print it.
+# shellcheck disable=SC2016  # the backticks are the literal test input
+printf '%s\n' 'base_image: `sed -n p templates/web.template.yml`' > "$MOCK_DIR/templates/web.template.yml"
+EXIT_CODE=0
+STDERR=$(DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" 2>&1 || true)
+DD_DIR="$MOCK_DIR" "$SCRIPT_DIR/extract-upstream-versions.sh" >/dev/null 2>&1 || EXIT_CODE=$?
+if [ "$EXIT_CODE" -eq 0 ]; then
+  echo "ERROR: Extractor should have failed with a non-literal base_image"
+  exit 1
+fi
+if ! echo "$STDERR" | grep -q "Failed to extract BASE_IMAGE"; then
+  echo "ERROR: Expected 'Failed to extract BASE_IMAGE' in error output, got: $STDERR"
+  exit 1
+fi
+echo "  ✓ Fails on non-literal base_image"
 
 # Test missing DEBIAN_RELEASE (Dockerfile present but without that ARG)
-echo 'image=discourse/base:test' > "$MOCK_DIR/launcher"
+echo 'base_image: discourse/base:test' > "$MOCK_DIR/templates/web.template.yml"
 grep -v '^ARG DEBIAN_RELEASE=' "$REPO_ROOT/discourse_docker/image/base/Dockerfile" \
   > "$MOCK_DIR/image/base/Dockerfile"
 EXIT_CODE=0
@@ -184,7 +202,7 @@ STUB_DIR=$(mktemp -d)
 DOCKER_MARKER="$STUB_DIR/docker-was-called"
 trap 'rm -rf "$MOCK_DIR" "$ABORT_MOCK_DIR" "$STUB_DIR"' EXIT
 
-# discourse_docker mock: no Dockerfile, no launcher -> extraction fails. Must also carry a
+# discourse_docker mock: no Dockerfile, no web.template.yml -> extraction fails. Must also carry a
 # valid, substituted containers/basecontainer.yaml -- k8s-bootstrap's own CONFIG_FILE-exists
 # check (main(), ahead of validate_pups()) would otherwise abort the script first and this
 # test would pass for the wrong reason, without ever exercising the extraction-failure path.
