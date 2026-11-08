@@ -765,7 +765,7 @@ This project deliberately deviates from the upstream `discourse_docker/launcher`
 
 | Value | Source | Extraction |
 |-------|--------|------------|
-| Base image tag | `discourse_docker/launcher` line 1 | `grep '^image='` in `extract-upstream-versions.sh` |
+| Base image tag | `discourse_docker/templates/web.template.yml` | first `base_image:` line in `extract-upstream-versions.sh` (the upstream `launcher` reads the same line since discourse/discourse_docker#1152) |
 | PostgreSQL version | `discourse_docker/image/base/Dockerfile` | `ARG PG_MAJOR=` regex |
 | Redis provenance | `discourse_docker/image/base/Dockerfile` | `ARG DEBIAN_RELEASE=` regex — Redis is the Debian package, not an upstream-pinned build, so this is a channel (`debian-trixie`), not a version |
 | Ruby version | `discourse_docker/image/base/Dockerfile` | `ARG RUBY_VERSION=` regex |
@@ -774,6 +774,7 @@ All extractions are centralized in `scripts/extract-upstream-versions.sh`, which
 
 **Known risks:**
 - Regex patterns are fragile — if upstream changes from `ARG PG_MAJOR=15` to a different format, the validation loop produces an explicit "Failed to extract" error
+- Callers `eval` the extractor output, so the extractor accepts only plain literal values (an image reference, a version string). Any other value, such as a shell command, is a "Failed to extract" error and never reaches `eval`
 - Template extraction via `sed` in `k8s-bootstrap` assumes the `templates:` block format is stable
 - The `_FILE_SEPERATOR_` delimiter is a pups convention (the typo is intentional upstream)
 
